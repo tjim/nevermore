@@ -78,8 +78,13 @@ entire filter string is interpreted as a single regular expression."
   "Face for Nm separator string."
   :group 'nm-faces)
 
-(defface nm-subject-face
+(defface nm-unread-face
   '((t :inherit font-lock-function-name-face :bold t))
+  "Face for Nm subjects."
+  :group 'nm-faces)
+
+(defface nm-read-face
+  '((t :inherit font-lock-function-name-face))
   "Face for Nm subjects."
   :group 'nm-faces)
 
@@ -117,7 +122,7 @@ entire filter string is interpreted as a single regular expression."
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
-(defvar nm-filter-regexp nil
+(defvar nm-filter-regexp (list "" "tag:inbox")
   "A list of string representing the current filter used by Nm.
 
 In incremental search mode, when `nm-incremental-search' is
@@ -404,21 +409,20 @@ regexp.")
   (when match
     (let* ((date (plist-get match :date_relative))
            (authors (plist-get match :authors))
-           (subject (plist-get match :subject)))
+           (subject (plist-get match :subject))
+           (tags (plist-get match :tags)))
       (widget-create 'link
                      :button-prefix ""
                      :button-suffix ""
-                     :button-face 'nm-title-face
+                     :button-face (if (member "unread" tags) 'nm-unread-face 'nm-read-face)
                      :format "%[%v%]"
                      :tag match
                      :help-echo "See this match"
                      :notify (lambda (widget &rest ignore)
                                (nm-open-match (widget-get widget :tag)))
-                     (propertize
-                      (nm-truncate-or-pad nm-subject-width
-                                          (if (and subject (> (length subject) 0)) subject
-                                            nm-empty-subject))
-                      'face 'nm-date-face))
+                     (nm-truncate-or-pad nm-subject-width
+                                         (if (and subject (> (length subject) 0)) subject
+                                           nm-empty-subject)))
       (widget-insert (propertize nm-separator 'face 'nm-separator-face))
       (widget-insert
        (propertize
@@ -474,10 +478,12 @@ Call this function after any actions which update the filter and file list."
 
 (defun nm-more-matches-message ()
   "Return a short message with the count of additional matches."
-  (let ((additional (- nm-current-count (length nm-current-matches))))
-    (if (> additional 0)
-        (format "   ... and %d more" additional)
-      "")))
+  (if nm-current-count
+      (let ((additional (- nm-current-count (length nm-current-matches))))
+        (if (> additional 0)
+            (format "   ... and %d more" additional)
+          ""))
+    ""))
 
 ;; File list file management actions
 
@@ -611,8 +617,34 @@ Call this function after any actions which update the filter and file list."
 ;;         (delq filename nm-all-matches)
 ;;         (nm-refresh)))))
 
+(defun nm-delete-animated () ;; not really great.
+  "Gratuitous animation!"
+  (interactive)
+  (let ((bol (line-beginning-position))
+        (eol (line-end-position)))
+    (beginning-of-line)
+    (delete-char (- eol bol))
+    (sleep-for 0 300)
+    (delete-char 1)))
+
+(defun nm-delete ()
+  "Delete it."
+  (interactive)
+  (let ((match (widget-get (widget-at) :tag)))
+     (when match
+       (notmuch-tag (concat "thread:" (plist-get match :thread)) '("+deleted" "-unread" "-inbox"))
+       (nm-refresh))))
+
+(defun nm-archive ()
+  "Archive it."
+  (interactive)
+  (let ((match (widget-get (widget-at) :tag)))
+     (when match
+       (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
+       (nm-refresh))))
+
 ;; (defun nm-rename-file ()
-;;   "Rename the file represented by the widget at the point.
+;;   "Rename the file represented by the widget at the point
 ;; If the point is not on a file widget, do nothing."
 ;;   (interactive)
 ;;   (let (old-filename new-filename old-name new-name)
@@ -657,9 +689,9 @@ Call this function after any actions which update the filter and file list."
 (defun nm-filter-initialize ()
   "Initialize the filter string (nil) and matches list (all matches)."
   (interactive)
-  (setq nm-filter-regexp nil)
-  (setq nm-all-count (nm-do-count "*"))
-  (setq nm-all-matches (nm-do-search "*"))
+  (setq nm-filter-regexp (list "" "tag:inbox"))
+  (setq nm-all-count (nm-do-count (nm-whole-filter-regexp)))
+  (setq nm-all-matches (nm-do-search (nm-whole-filter-regexp)))
   (setq nm-current-count nm-all-count)
   (setq nm-current-matches nm-all-matches))
 
@@ -893,10 +925,10 @@ Otherwise, quick create a new file."
     (define-key map (kbd "C-c C-m") 'nm-new-file-named)
     (define-key map (kbd "<C-return>") 'nm-new-file-named)
     ;; File management
-    (define-key map (kbd "C-c C-d") 'nm-delete-file)
+    (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-r") 'nm-rename-file)
     (define-key map (kbd "C-c C-f") 'nm-find-file)
-    (define-key map (kbd "C-c C-a") 'nm-archive-file)
+    (define-key map (kbd "C-c C-a") 'nm-archive)
     ;; Settings
     (define-key map (kbd "C-c C-t") 'nm-toggle-incremental-search)
     ;; Miscellaneous
@@ -943,8 +975,6 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   ;;   (run-with-idle-timer nm-auto-save-interval t 'nm-auto-save))
   (run-mode-hooks 'nm-mode-hook)
   (message ""))
-
-(put 'nm-mode 'mode-class 'special)
 
 ;;;###autoload
 (defun nm ()
