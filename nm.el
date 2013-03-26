@@ -10,7 +10,7 @@
   (notmuch-call-notmuch-json
    "search"
    "--output=summary"
-   (format "--limit=%d" (- nm-window-height 3))
+   (format "--limit=%d" (- nm-window-height 2))
    "--format=json"
    "--format-version=1"
    "--sort=newest-first"
@@ -200,9 +200,14 @@ regexp.")
 ;;     (re-search-forward str nil t)))
 
 (defun nm-set-mode-name ()
-  (if nm-incremental-search
-      (setq mode-name "Nm")
-    (setq mode-name "Nm/R")))
+  (let* ((count (or nm-current-count 0))
+         (matches
+          (cond ((eq count 1) "1 match")
+                ((< count (- nm-window-height 2)) (format "%d matches" count))
+                (t (format "%d of %d matches" (- nm-window-height 2) count)))))
+    (if nm-incremental-search
+        (setq mode-name (format "Nm: %s" matches))
+      (setq mode-name (format "Nm/R: %s" matches)))))
 
 (defun nm-toggle-incremental-search ()
   "Toggle the `nm-incremental-search' setting."
@@ -389,7 +394,6 @@ regexp.")
         (mapc 'nm-match-widget nm-current-matches))
     (widget-insert (nm-no-matches-message)))
 
-  (widget-insert (nm-more-matches-message))
   (use-local-map nm-mode-map)
   (widget-setup)
   (goto-char 1)
@@ -417,7 +421,6 @@ regexp.")
                      :button-face (if (member "unread" tags) 'nm-unread-face 'nm-read-face)
                      :format "%[%v%]"
                      :tag match
-                     :help-echo "See this match"
                      :notify (lambda (widget &rest ignore)
                                (nm-open-match (widget-get widget :tag)))
                      (nm-truncate-or-pad nm-subject-width
@@ -475,15 +478,6 @@ Call this function after any actions which update the filter and file list."
   (if nm-filter-regexp
       "No matches for current filter string.\n"
     "No matches found."))
-
-(defun nm-more-matches-message ()
-  "Return a short message with the count of additional matches."
-  (if nm-current-count
-      (let ((additional (- nm-current-count (length nm-current-matches))))
-        (if (> additional 0)
-            (format "   ... and %d more" additional)
-          ""))
-    ""))
 
 ;; File list file management actions
 
@@ -693,6 +687,7 @@ Call this function after any actions which update the filter and file list."
   (setq nm-all-count (nm-do-count (nm-whole-filter-regexp)))
   (setq nm-all-matches (nm-do-search (nm-whole-filter-regexp)))
   (setq nm-current-count nm-all-count)
+  (nm-set-mode-name)
   (setq nm-current-matches nm-all-matches))
 
 ;; (defun nm-filter-match-file (file &optional batch)
@@ -738,6 +733,7 @@ Nm buffer."
       (setq nm-current-matches nm-all-matches)
     (progn
       (setq nm-current-count (nm-do-count (nm-search-term)))
+      (nm-set-mode-name)
       (setq nm-current-matches (nm-do-search (nm-search-term))))))
 
 ;; Filters that cause a refresh
@@ -749,6 +745,7 @@ Nm buffer."
     (setq nm-filter-regexp nil)
     (setq nm-current-matches nm-all-matches)
     (setq nm-current-count nm-all-count)
+    (nm-set-mode-name)
     (nm-refresh))
   (message "Filter cleared."))
 
