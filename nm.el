@@ -74,12 +74,12 @@ entire filter string is interpreted as a single regular expression."
   :group 'nm-faces)
 
 (defface nm-separator-face
-  '((t :inherit font-lock-keyword-face))
+  '((t :inherit font-preprocessor-face))
   "Face for Nm separator string."
   :group 'nm-faces)
 
 (defface nm-unread-face
-  '((t :inherit font-lock-function-name-face :bold t))
+  '((t :inherit font-lock-keyword-face))
   "Face for Nm subjects."
   :group 'nm-faces)
 
@@ -176,7 +176,7 @@ regexp.")
 (defvar nm-date-width 11
   "Width of dates in Nm buffer.")
 
-(defvar nm-authors-width 32
+(defvar nm-authors-width 20
   "Width of authors in Nm buffer.")
 
 (defvar nm-subject-width nil
@@ -397,7 +397,8 @@ regexp.")
   (use-local-map nm-mode-map)
   (widget-setup)
   (goto-char 1)
-  (forward-line 2))
+  (forward-line 2)
+  (widget-forward 1))
 
 (defun nm-truncate-or-pad (width str)
   (let ((len (length str)))
@@ -415,24 +416,25 @@ regexp.")
            (authors (plist-get match :authors))
            (subject (plist-get match :subject))
            (tags (plist-get match :tags)))
-      (widget-create 'link
-                     :button-prefix ""
-                     :button-suffix ""
-                     :button-face (if (member "unread" tags) 'nm-unread-face 'nm-read-face)
-                     :format "%[%v%]"
-                     :tag match
-                     :notify (lambda (widget &rest ignore)
-                               (nm-open-match (widget-get widget :tag)))
-                     (nm-truncate-or-pad nm-subject-width
-                                         (if (and subject (> (length subject) 0)) subject
-                                           nm-empty-subject)))
-      (widget-insert (propertize nm-separator 'face 'nm-separator-face))
       (widget-insert
        (propertize
         (nm-truncate-or-pad nm-authors-width
                             (if authors authors
                               nm-empty-authors))
         'face 'nm-authors-face))
+      (widget-insert (propertize nm-separator 'face 'nm-separator-face))
+      (widget-create 'link
+                     :button-prefix ""
+                     :button-suffix ""
+                     :button-face (if (member "unread" tags) 'nm-unread-face 'nm-read-face)
+                     :format "%[%v%]"
+                     :tag match
+                     :help-echo nil
+                     :notify (lambda (widget &rest ignore)
+                               (nm-open-match (widget-get widget :tag)))
+                     (nm-truncate-or-pad nm-subject-width
+                                         (if (and subject (> (length subject) 0)) subject
+                                           nm-empty-subject)))
       (widget-insert (propertize nm-separator 'face 'nm-separator-face))
       (widget-insert
        (propertize
@@ -444,9 +446,10 @@ regexp.")
 
 (add-hook 'window-configuration-change-hook
           (lambda ()
-            (when (and (eq (current-buffer) (get-buffer nm-buffer))
-                       (not (and (eq nm-window-width (window-width))
-                                 (eq nm-window-height (window-body-height)))))
+            ;; (when (and (eq (current-buffer) (get-buffer nm-buffer))
+            ;;            (not (and (eq nm-window-width (window-width))
+            ;;                      (eq nm-window-height (window-body-height)))))
+            (when (eq (current-buffer) (get-buffer nm-buffer))
               (nm-buffer-setup))))
 
 (defun nm-refresh ()
