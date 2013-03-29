@@ -2,7 +2,6 @@
 ;;; work in progress
 ;;; based on deft.el
 
-(require 'widget)
 (require 'notmuch)
 (require 'notmuch-lib)
 (require 'notmuch-mua)
@@ -98,7 +97,7 @@
 (defvar nm-window-height nil
   "Height of Nm buffer.")
 
-(defvar nm-date-width 11
+(defvar nm-date-width 12
   "Width of dates in Nm buffer.")
 
 (defvar nm-authors-width 20
@@ -106,11 +105,6 @@
 
 (defvar nm-subject-width nil
   "Width of authors in Nm buffer.")
-
-;; Set options to control widget display
-
-(setq widget-push-button-prefix "")
-(setq widget-push-button-suffix "")
 
 ;; Helpers
 
@@ -146,40 +140,10 @@
 
 (defun nm-buffer-setup ()
   "Render the match browser in the *Nm* buffer."
-  (let ((inhibit-read-only t))
-    (erase-buffer))
-  (remove-overlays)
-  (use-local-map nm-mode-map)
-  (widget-create 'editable-field
-                 :format "Nm: %v"
-                 :value-face 'nm-filter-string-face
-                 :notify (lambda (widget &rest ignore)
-                           (setq nm-filter-string (widget-value widget)))
-                 nm-filter-string)
-  (widget-insert "\n")
   (nm-resize)
+  (nm-refresh)
   (goto-char 1)
-  (widget-forward 1)
-  (move-end-of-line 1))
-
-(defun nm-match-equal (a b)
-  ; in particular this ignores :widget
-  (and (equal (plist-get a :thread)
-              (plist-get b :thread))
-       (equal (plist-get a :tags)
-              (plist-get b :tags))))
-
-(defun nm-match-widget (match)
-  "Add a line to the match browser for the given MATCH."
-  (when match
-    (let ((w (widget-create 'push-button
-                              :match match
-                              :notify (lambda (widget &rest ignore)
-                                        (nm-open-match (widget-get widget :match)))
-                              (nm-match-text match))))
-      (widget-insert "\n")
-      ; NB,  this plist-put can return a cons cell <> match
-      (plist-put match :widget w))))
+  (forward-line 2))
 
 (defun nm-match-text (match)
   "Return text for a line for the given MATCH."
@@ -207,6 +171,23 @@
                               nm-empty-date))
         'face 'nm-date-face)))))
 
+(defun nm-insert-match (match)
+  "Add a line to the match browser for the given MATCH."
+  (when match
+    (insert (nm-match-text match) "\n")))
+
+(defun nm-draw-buffer ()
+  (save-excursion
+    (save-window-excursion
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert
+         (propertize "Nm: " 'face 'nm-header-face)
+         (propertize nm-filter-string 'face 'nm-filter-string-face)
+         "\n"
+         "\n")
+        (mapc 'nm-insert-match nm-current-matches)))))
+
 (defun nm-refresh-count ()
   (setq nm-current-count (nm-do-count nm-filter-string))
   (let ((matches
@@ -216,54 +197,36 @@
     (setq mode-name (format "Nm: %s" matches))))
 
 (defun nm-resize ()
-  "Call this function if the size of the window changes."
+  "Call this function if the size of the window changes.  Does NOT re-run the filter."
   (interactive)
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
       (setq nm-window-width (window-width))
       (setq nm-window-height (window-body-height))
       (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
-      (save-excursion
-        (save-window-excursion
-          (nm-refresh-count)
-          ; If there are no matches we must start at the right place
-          (goto-char 1)
-          (forward-line 2)
-          ; first delete all buttons
-          (message (format "(length nm-current-matches) = %d" (length nm-current-matches)))
-          (setq nm-current-matches (nm-update-matches nm-current-matches nil))
-          ; then restore
-          (setq nm-current-matches (nm-update-matches nm-current-matches (nm-do-search nm-filter-string)))
-          (widget-setup))))))
+      (nm-draw-buffer))))
 
 (defun nm-refresh ()
   "Reapply the filter and refresh the *Nm* buffer."
   (interactive)
   (nm-refresh-count)
-  (save-excursion
-    (save-window-excursion
-      ; If there are no matches we must start at the right place
-      (goto-char 1)
-      (forward-line 2)
-      (setq nm-current-matches
-            (nm-update-matches nm-current-matches (nm-do-search nm-filter-string)))
-      (widget-setup))))
+  (setq nm-current-matches (nm-do-search nm-filter-string))
+  (nm-draw-buffer))
 
-(defun nm-open-match (match)
-  (notmuch-show (concat "thread:" (plist-get match :thread))))
+(defun nm-match-at-pos ()
+  (nth (- (line-number-at-pos) 3) nm-current-matches))
 
-(defun nm-delete-experiment ()
-  "Delete it."
+(defun nm-open-match ()
+  "Open it."
   (interactive)
-  (let ((from (widget-get (widget-at) :from))
-        (to (widget-get (widget-at) :to)))
-    (goto-char from)
-    (widget-delete (widget-at))))
+  (let ((match (nm-match-at-pos)))
+    (when match
+      (notmuch-show (concat "thread:" (plist-get match :thread))))))
 
 (defun nm-delete ()
   "Delete it."
   (interactive)
-  (let ((match (widget-get (widget-at) :match)))
+  (let ((match (nm-match-at-pos)))
     (when match
       (notmuch-tag (concat "thread:" (plist-get match :thread)) '("+deleted" "-unread" "-inbox"))
       (nm-refresh))))
@@ -271,34 +234,10 @@
 (defun nm-archive ()
   "Archive it."
   (interactive)
-  (let ((match (widget-get (widget-at) :match)))
+  (let ((match (nm-match-at-pos)))
     (when match
       (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
       (nm-refresh))))
-
-(defun nm-update-matches (old new)
-  (cond
-   ((and (not old) (not new)) '())
-   ((not old) (mapcar 'nm-match-widget new))
-   ((not new) (let ((from (widget-get (plist-get (car old) :widget) :from)))
-                (save-excursion
-                  (mapc (lambda (m)
-                          (widget-delete (plist-get m :widget)))
-                        old)
-                  (let ((inhibit-read-only t))
-                    (delete-region (marker-position from) (point-max))))
-                '()))
-   ((nm-match-equal (car old) (car new))
-    (cons (car old)
-          (nm-update-matches (cdr old) (cdr new))))
-   (t (let ((from (widget-get (plist-get (car old) :widget) :from)))
-        (save-excursion
-          (mapc (lambda (m)
-                  (widget-delete (plist-get m :widget)))
-                old)
-          (let ((inhibit-read-only t))
-            (delete-region (marker-position from) (point-max)))
-          (mapcar 'nm-match-widget new))))))
 
 ;;; Mode definition
 
@@ -309,22 +248,13 @@
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
-    ;; Handle backspace and delete
-    (define-key map (kbd "DEL") 'nm-filter-decrement)
-    (define-key map (kbd "M-DEL") 'nm-filter-decrement-word)
     ;; Handle return via completion or opening file
-    (define-key map (kbd "RET") 'widget-button-click)
+    (define-key map (kbd "RET") 'nm-open-match)
     ;; File creation
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-r") 'nm-refresh)
     (define-key map (kbd "C-c C-q") 'quit-window)
-    ;; Widgets
-    (define-key map [down-mouse-1] 'widget-button-click)
-    (define-key map [down-mouse-2] 'widget-button-click)
-    (define-key map (kbd "<tab>") 'widget-forward)
-    (define-key map (kbd "<backtab>") 'widget-backward)
-    (define-key map (kbd "<S-tab>") 'widget-backward)
     map)
   "Keymap for Nm mode.")
 
