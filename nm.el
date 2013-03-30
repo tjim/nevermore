@@ -78,8 +78,8 @@
 
 ;; Global variables
 
-(defvar nm-no-funp t
-  "If you are no fun.")
+(defvar nm-i-am-dead-inside t
+  "If you are dead insider.")
 
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
@@ -92,11 +92,16 @@
 (defvar nm-current-count nil
   "Count of matches for the current filter.")
 
+(defvar nm-current-offset 0)
+
 (defvar nm-window-width nil
   "Width of Nm buffer.")
 
 (defvar nm-window-height nil
   "Height of Nm buffer.")
+
+(defvar nm-results-per-screen nil
+  "Number of results that can fit on one screen.")
 
 (defvar nm-date-width 12
   "Width of dates in Nm buffer.")
@@ -116,7 +121,7 @@
                (lambda () (setq animation-buffer-name saved-animation-buffer-name)))
            (lambda () (makunbound 'animation-buffer-name)))))
     (unwind-protect
-        (when (not nm-no-funp)
+        (when (not nm-i-am-dead-inside)
           (setq animation-buffer-name nm-buffer)
           (animate-sequence '("N E V E R M O R E") 0)
           (sit-for (log 4)))
@@ -127,7 +132,8 @@
     (notmuch-call-notmuch-json
      "search"
      "--output=summary"
-     (format "--limit=%d" (- nm-window-height 2))
+     (format "--offset=%d" nm-current-offset)
+     (format "--limit=%d" nm-results-per-screen)
      "--format=json"
      "--format-version=1"
      "--sort=newest-first"
@@ -138,6 +144,7 @@
    (ignore-errors
      (notmuch-call-notmuch-json
       "count"
+      "--output=threads"
       query))
    0))
 
@@ -243,19 +250,22 @@
 
 (defun nm-refresh-count ()
   (setq nm-current-count (nm-do-count nm-filter-string))
-  (let ((matches
-         (cond ((eq nm-current-count 1) "1 match")
-               ((< nm-current-count (- nm-window-height 2)) (format "%d matches" nm-current-count))
-               (t (format "%d of %d matches" (- nm-window-height 2) nm-current-count)))))
-    (setq mode-name (format "Nm: %s" matches))))
+  (let ((matches (cond ((eq nm-current-count 1) "1 match")
+                       (t (format "%d matches" nm-current-count)))))
+    (if (< nm-current-count nm-results-per-screen)
+        (setq mode-name (format "Nm: %s" matches))
+      (let ((first-match (1+ nm-current-offset))
+            (last-match (min nm-current-count (+ nm-current-offset nm-results-per-screen))))
+        (setq mode-name (format "Nm: %d-%d of %s" first-match last-match matches))))))
 
 (defun nm-resize ()
   "Call this function if the size of the window changes."
   (interactive)
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
-      (setq nm-window-width (window-width))
       (setq nm-window-height (window-body-height))
+      (setq nm-results-per-screen (- nm-window-height 2))
+      (setq nm-window-width (window-width))
       (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
       (nm-refresh))))
 
@@ -323,7 +333,8 @@
     (if (or (not s) (equal (nm-chomp s) ""))
         (setq nm-filter-string "*")
       (setq nm-filter-string s))
-  (nm-refresh)))
+    (setq nm-current-offset 0)
+    (nm-refresh)))
 
 (defun nm-incrementally ()
   "Read string with PROMPT and display results incrementally."
@@ -337,6 +348,21 @@
           (add-hook 'post-command-hook 'nm-minibuffer-refresh)
           (read-string "Filter: ")))
     (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
+
+;;; Navigation within results
+
+(defun nm-forward ()
+  (interactive)
+  (let ((new-offset (+ nm-current-offset nm-results-per-screen)))
+    (when (< new-offset nm-current-count)
+      (setq nm-current-offset new-offset)
+      (nm-refresh))))
+
+(defun nm-backward ()
+  (interactive)
+  (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen))))
+      (setq nm-current-offset new-offset)
+      (nm-refresh)))
 
 ;;; Thread display
 
@@ -370,9 +396,9 @@
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
-    ;; Handle return via completion or opening file
     (define-key map (kbd "RET") 'nm-open-match)
-    ;; File creation
+    (define-key map [remap scroll-up-command] 'nm-forward)
+    (define-key map [remap scroll-down-command] 'nm-backward)
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-f") 'nm-incrementally)
@@ -398,6 +424,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-draw-header)
   (setq nm-current-matches nil)
   (setq nm-current-count 0)
+  (setq nm-current-offset 0)
   (nm-resize)
   (nm-goto-first-match-pos)
   (setq major-mode 'nm-mode)
