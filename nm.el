@@ -1,6 +1,4 @@
 ;;; nm.el --- "nevermore" interface to notmuch
-;;; work in progress
-;;; based on deft.el
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -80,6 +78,9 @@
 
 ;; Global variables
 
+(defvar nm-no-funp t
+  "If you are no fun.")
+
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
@@ -107,6 +108,19 @@
   "Width of authors in Nm buffer.")
 
 ;; Helpers
+
+(defun nm-splash-screen ()
+  (let ((animation-buffer-restore
+         (if (boundp 'animation-buffer-name)
+             (let ((saved-animation-buffer-name animation-buffer-name))
+               (lambda () (setq animation-buffer-name saved-animation-buffer-name)))
+           (lambda () (makunbound 'animation-buffer-name)))))
+    (unwind-protect
+        (when (not nm-no-funp)
+          (setq animation-buffer-name nm-buffer)
+          (animate-sequence '("N E V E R M O R E") 0)
+          (sit-for (log 4)))
+      (funcall animation-buffer-restore))))
 
 (defun nm-do-search (query)
   (notmuch-call-notmuch-json
@@ -138,10 +152,8 @@
 
 ;; Display
 
-(defun nm-buffer-setup ()
+(defun nm-goto-first-match-pos ()
   "Render the match browser in the *Nm* buffer."
-  (nm-resize)
-  (nm-refresh)
   (goto-char 1)
   (forward-line 2))
 
@@ -176,7 +188,7 @@
   (when match
     (insert (nm-match-text match) "\n")))
 
-(defun nm-draw-buffer ()
+(defun nm-draw-header ()
   (save-excursion
     (save-window-excursion
       (let ((inhibit-read-only t))
@@ -185,8 +197,45 @@
          (propertize "Nm: " 'face 'nm-header-face)
          (propertize nm-filter-string 'face 'nm-filter-string-face)
          "\n"
-         "\n")
-        (mapc 'nm-insert-match nm-current-matches)))))
+         "\n")))))
+
+(defun nm-update-buffer (old new)
+  (save-excursion
+    (save-window-excursion
+      (let ((inhibit-read-only t))
+        (nm-goto-first-match-pos)
+        (nm-update-lines old new)))))
+
+(defun nm-match-equal (a b)
+  (and (equal (plist-get a :thread) (plist-get b :thread))
+       (equal (plist-get a :tags) (plist-get b :tags))))
+
+(defun nm-forward-match ()
+  (interactive)
+  (forward-line 1))
+  ;; (let ((index (nm-match-index-at-pos)))
+  ;;   (when (and index (< (+1 index) nm-current-count))
+  ;;     (forward-line 1))))
+
+(defun nm-update-lines (old new)
+                                        ; invariant: if old then we are at the beginning of the line for (car old)
+  (cond
+   ((and (not old) (not new))
+    '())
+   ((not old)
+    (mapc 'nm-insert-match new))
+   ((not new)
+    (delete-region (point) (point-max)))
+   ((nm-match-equal (car old) (car new))
+    (progn
+      (nm-forward-match)
+      (nm-update-lines (cdr old) (cdr new))))
+   (t
+    (progn
+      (delete-region (point) (line-end-position))
+      (insert (nm-match-text (car new)))
+      (nm-forward-match)
+      (nm-update-lines (cdr old) (cdr new))))))
 
 (defun nm-refresh-count ()
   (setq nm-current-count (nm-do-count nm-filter-string))
@@ -197,24 +246,40 @@
     (setq mode-name (format "Nm: %s" matches))))
 
 (defun nm-resize ()
-  "Call this function if the size of the window changes.  Does NOT re-run the filter."
+  "Call this function if the size of the window changes."
   (interactive)
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
       (setq nm-window-width (window-width))
       (setq nm-window-height (window-body-height))
       (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
-      (nm-draw-buffer))))
+      (nm-refresh))))
 
 (defun nm-refresh ()
   "Reapply the filter and refresh the *Nm* buffer."
   (interactive)
   (nm-refresh-count)
-  (setq nm-current-matches (nm-do-search nm-filter-string))
-  (nm-draw-buffer))
+  (save-excursion
+    (save-window-excursion
+      (let ((inhibit-read-only t))
+        (goto-char 5)
+        (delete-region (point) (line-end-position))
+        (insert (propertize nm-filter-string 'face 'nm-filter-string-face)))))
+  (let ((old nm-current-matches))
+    (setq nm-current-matches (nm-do-search nm-filter-string))
+    (nm-update-buffer old nm-current-matches)))
+
+(defun nm-match-index-at-pos ()
+  (let ((index (- (line-number-at-pos) 3)))
+    (if (or (< index 0)
+            (>= index nm-current-count))
+        nil
+      index)))
 
 (defun nm-match-at-pos ()
-  (nth (- (line-number-at-pos) 3) nm-current-matches))
+  (let ((index (nm-match-index-at-pos)))
+    (when index
+      (nth index nm-current-matches))))
 
 (defun nm-open-match ()
   "Open it."
@@ -239,6 +304,59 @@
       (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
       (nm-refresh))))
 
+;;; Le incremental search
+
+(defun nm-minibuffer-contents ()
+  "Return the contents of the minibuffer when it is active."
+  (if (active-minibuffer-window)
+      (with-current-buffer (window-buffer (active-minibuffer-window))
+        (minibuffer-contents))))
+
+(defun nm-minibuffer-refresh ()
+  (setq nm-filter-string (minibuffer-contents))
+  (message "nm-minibuffer-refresh " nm-filter-string)
+  (nm-refresh))
+
+(defun nm-incrementally ()
+  "Read string with PROMPT and display results incrementally."
+  (interactive)
+  (message "here's what I read: "
+           (unwind-protect
+               (progn
+                 (add-hook 'post-command-hook 'nm-minibuffer-refresh)
+                 (read-string "Filter: "))
+             (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
+  )
+
+(defun nm-read-filter ()
+  "Read filter string and display results."
+  (interactive)
+  (setq nm-filter-string (read-string "Filter: "))
+  (nm-refresh))
+
+;;; Thread display
+
+(defun nm-get-message (message-id)
+  (notmuch-call-notmuch-json
+   "show"
+   "--format=json"
+   (concat "id:" message-id)))
+(defun nm-flat-thread ()
+  (interactive)
+  (let ((match (nm-match-at-pos)))
+    (when match
+      (let* ((thread-id (concat "thread:" (plist-get match :thread)))
+             (messages 
+              (mapcar 'nm-get-message
+                      (notmuch-call-notmuch-json
+                       "search"
+                       "--output=messages"
+                       "--format=json"
+                       "--sort=oldest-first"
+                       thread-id))))
+        (switch-to-buffer "FOO")
+        (mapc (lambda (m) (insert (format "%S\n" m))) messages)))))
+
 ;;; Mode definition
 
 (defun nm-show-version ()
@@ -253,7 +371,9 @@
     ;; File creation
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
+    (define-key map (kbd "C-c C-f") 'nm-read-filter)
     (define-key map (kbd "C-c C-r") 'nm-refresh)
+    (define-key map (kbd "C-c C-t") 'nm-flat-thread)
     (define-key map (kbd "C-c C-q") 'quit-window)
     map)
   "Keymap for Nm mode.")
@@ -262,16 +382,20 @@
 (put 'nm-mode 'mode-class 'special)
 
 (defun nm-mode ()
-  "Major mode for quickly browsing, filtering, and editing plain text notes.
+  "Major mode for mail.
 Turning on `nm-mode' runs the hook `nm-mode-hook'.
 
 \\{nm-mode-map}."
-  (message "Nm initializing...")
   (kill-all-local-variables)
   (setq truncate-lines t)
+  (nm-splash-screen)
   (setq buffer-read-only t)
   (use-local-map nm-mode-map)
-  (nm-buffer-setup)
+  (nm-draw-header)
+  (setq nm-current-matches nil)
+  (setq nm-current-count 0)
+  (nm-resize)
+  (nm-goto-first-match-pos)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'window-configuration-change-hook
@@ -279,8 +403,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
               (when (and (eq (current-buffer) (get-buffer nm-buffer))
                          (not (and (eq nm-window-width (window-width))
                                    (eq nm-window-height (window-body-height)))))
-                (nm-resize))))
-  (message ""))
+                (nm-resize)))))
 
 ;;;###autoload
 (defun nm ()
