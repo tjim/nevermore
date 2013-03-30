@@ -258,16 +258,18 @@
 (defun nm-refresh ()
   "Reapply the filter and refresh the *Nm* buffer."
   (interactive)
-  (nm-refresh-count)
-  (save-excursion
-    (save-window-excursion
-      (let ((inhibit-read-only t))
-        (goto-char 5)
-        (delete-region (point) (line-end-position))
-        (insert (propertize nm-filter-string 'face 'nm-filter-string-face)))))
-  (let ((old nm-current-matches))
-    (setq nm-current-matches (nm-do-search nm-filter-string))
-    (nm-update-buffer old nm-current-matches)))
+  (when (get-buffer nm-buffer)
+    (with-current-buffer nm-buffer
+      (nm-refresh-count)
+      (save-excursion
+        (save-window-excursion
+          (let ((inhibit-read-only t))
+            (goto-char 5)
+            (delete-region (point) (line-end-position))
+            (insert (propertize nm-filter-string 'face 'nm-filter-string-face)))))
+      (let ((old nm-current-matches))
+        (setq nm-current-matches (nm-do-search nm-filter-string))
+        (nm-update-buffer old nm-current-matches)))))
 
 (defun nm-match-index-at-pos ()
   (let ((index (- (line-number-at-pos) 3)))
@@ -313,20 +315,20 @@
         (minibuffer-contents))))
 
 (defun nm-minibuffer-refresh ()
-  (setq nm-filter-string (minibuffer-contents))
-  (message "nm-minibuffer-refresh " nm-filter-string)
-  (nm-refresh))
+  (let ((s (minibuffer-contents)))
+    (if (or (not s) (equal s ""))
+        (setq nm-filter-string "*")
+      (setq nm-filter-string s))
+  (nm-refresh)))
 
 (defun nm-incrementally ()
   "Read string with PROMPT and display results incrementally."
   (interactive)
-  (message "here's what I read: "
-           (unwind-protect
-               (progn
-                 (add-hook 'post-command-hook 'nm-minibuffer-refresh)
-                 (read-string "Filter: "))
-             (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
-  )
+  (unwind-protect
+      (progn
+        (add-hook 'post-command-hook 'nm-minibuffer-refresh)
+        (read-string "Filter: "))
+    (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
 
 (defun nm-read-filter ()
   "Read filter string and display results."
