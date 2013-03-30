@@ -123,19 +123,23 @@
       (funcall animation-buffer-restore))))
 
 (defun nm-do-search (query)
-  (notmuch-call-notmuch-json
-   "search"
-   "--output=summary"
-   (format "--limit=%d" (- nm-window-height 2))
-   "--format=json"
-   "--format-version=1"
-   "--sort=newest-first"
-   query))
+  (ignore-errors
+    (notmuch-call-notmuch-json
+     "search"
+     "--output=summary"
+     (format "--limit=%d" (- nm-window-height 2))
+     "--format=json"
+     "--format-version=1"
+     "--sort=newest-first"
+     query)))
 
 (defun nm-do-count (query)
-  (notmuch-call-notmuch-json
-   "count"
-   query))
+  (or 
+   (ignore-errors
+     (notmuch-call-notmuch-json
+      "count"
+      query))
+   0))
 
 (defun nm-chomp (str)
   "Trim leading and trailing whitespace from STR."
@@ -195,7 +199,7 @@
         (erase-buffer)
         (insert
          (propertize "Nm: " 'face 'nm-header-face)
-         (propertize nm-filter-string 'face 'nm-filter-string-face)
+         (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)
          "\n"
          "\n")))))
 
@@ -266,7 +270,7 @@
           (let ((inhibit-read-only t))
             (goto-char 5)
             (delete-region (point) (line-end-position))
-            (insert (propertize nm-filter-string 'face 'nm-filter-string-face)))))
+            (insert (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
       (let ((old nm-current-matches))
         (setq nm-current-matches (nm-do-search nm-filter-string))
         (nm-update-buffer old nm-current-matches)))))
@@ -315,8 +319,8 @@
         (minibuffer-contents))))
 
 (defun nm-minibuffer-refresh ()
-  (let ((s (minibuffer-contents)))
-    (if (or (not s) (equal s ""))
+  (let ((s (nm-minibuffer-contents)))
+    (if (or (not s) (equal (nm-chomp s) ""))
         (setq nm-filter-string "*")
       (setq nm-filter-string s))
   (nm-refresh)))
@@ -325,16 +329,14 @@
   "Read string with PROMPT and display results incrementally."
   (interactive)
   (unwind-protect
-      (progn
-        (add-hook 'post-command-hook 'nm-minibuffer-refresh)
-        (read-string "Filter: "))
+      (minibuffer-with-setup-hook
+          (lambda ()
+            (insert nm-filter-string)
+            (goto-char (point-max)))
+        (progn
+          (add-hook 'post-command-hook 'nm-minibuffer-refresh)
+          (read-string "Filter: ")))
     (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
-
-(defun nm-read-filter ()
-  "Read filter string and display results."
-  (interactive)
-  (setq nm-filter-string (read-string "Filter: "))
-  (nm-refresh))
 
 ;;; Thread display
 
@@ -373,7 +375,7 @@
     ;; File creation
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
-    (define-key map (kbd "C-c C-f") 'nm-read-filter)
+    (define-key map (kbd "C-c C-f") 'nm-incrementally)
     (define-key map (kbd "C-c C-r") 'nm-refresh)
     (define-key map (kbd "C-c C-t") 'nm-flat-thread)
     (define-key map (kbd "C-c C-q") 'quit-window)
