@@ -347,7 +347,9 @@
   (interactive)
   (let ((match (nm-match-at-pos)))
     (when match
-      (notmuch-tag (concat "thread:" (plist-get match :thread)) '("+deleted" "-unread" "-inbox"))
+      (if (nm-thread-mode)
+          (notmuch-tag (concat "thread:" (plist-get match :thread)) '("+deleted" "-unread" "-inbox"))
+        (notmuch-tag (concat "id:" (plist-get match :id)) '("+deleted" "-unread" "-inbox")))
       (nm-refresh))))
 
 (defun nm-archive ()
@@ -355,7 +357,9 @@
   (interactive)
   (let ((match (nm-match-at-pos)))
     (when match
-      (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
+      (if (nm-thread-mode)
+          (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
+        (notmuch-tag (concat "id:" (plist-get match :id)) '("-deleted" "-unread" "-inbox")))
       (nm-refresh))))
 
 ;;; Le incremental search
