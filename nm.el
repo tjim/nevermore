@@ -1,4 +1,9 @@
-;;; nm.el --- "nevermore" interface to notmuch
+;;; N E V E R M O R E
+;;; An Emacs mail application based on the principles of
+;;;     search
+;;;     feedback
+;;;     ascii art
+;;;     gratuitous animation
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -78,8 +83,8 @@
 
 ;; Global variables
 
-(defvar nm-i-am-dead-inside t
-  "If you are dead insider.")
+(defvar nm-i-am-dead-inside nil
+  "If you are dead inside.")
 
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
@@ -126,7 +131,7 @@
         (when (not nm-i-am-dead-inside)
           (setq animation-buffer-name nm-buffer)
           (animate-sequence '("N E V E R M O R E") 0)
-          (sit-for (log 4)))
+          (sit-for 1))
       (funcall animation-buffer-restore))))
 
 (defun nm-thread-mode ()
