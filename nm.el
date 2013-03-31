@@ -94,6 +94,8 @@
 
 (defvar nm-current-offset 0)
 
+(defvar nm-query-mode 'thread)
+
 (defvar nm-window-width nil
   "Width of Nm buffer.")
 
@@ -127,26 +129,62 @@
           (sit-for (log 4)))
       (funcall animation-buffer-restore))))
 
+(defun nm-thread-mode ()
+  (equal nm-query-mode 'thread))
+
+(defun nm-toggle-query-mode ()
+  (interactive)
+  (if (nm-thread-mode)
+      (setq nm-query-mode 'message)
+    (setq nm-query-mode 'thread))
+  (nm-refresh))
+
 (defun nm-do-search (query)
-  (ignore-errors
-    (notmuch-call-notmuch-json
-     "search"
-     "--output=summary"
-     (format "--offset=%d" nm-current-offset)
-     (format "--limit=%d" nm-results-per-screen)
-     "--format=json"
-     "--format-version=1"
-     "--sort=newest-first"
-     query)))
+  (if (nm-thread-mode)
+      (ignore-errors
+        (notmuch-call-notmuch-json
+         "search"
+         "--output=summary"
+         (format "--offset=%d" nm-current-offset)
+         (format "--limit=%d" nm-results-per-screen)
+         "--format=json"
+         "--format-version=1"
+         "--sort=newest-first"
+         query))
+    (ignore-errors
+      (let ((messages (notmuch-call-notmuch-json
+                       "search"
+                       "--output=messages"
+                       (format "--offset=%d" nm-current-offset)
+                       (format "--limit=%d" nm-results-per-screen)
+                       "--format=json"
+                       "--format-version=1"
+                       "--sort=newest-first"
+                       query)))
+        (mapcar
+         (lambda (message-id)
+           (plist-put
+            (car
+             (notmuch-call-notmuch-json
+              "search"
+              "--output=summary"
+              "--format=json"
+              "--format-version=1"
+              (concat "id:" message-id)))
+            :id message-id))
+         messages)))))
 
 (defun nm-do-count (query)
+  (let ((output (if (nm-thread-mode)
+                    "--output=threads"
+                  "--output=messages")))
   (or 
    (ignore-errors
      (notmuch-call-notmuch-json
       "count"
-      "--output=threads"
+      output
       query))
-   0))
+   0)))
 
 (defun nm-chomp (str)
   "Trim leading and trailing whitespace from STR."
@@ -402,9 +440,10 @@
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-f") 'nm-incrementally)
+    (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
     (define-key map (kbd "C-c C-r") 'nm-refresh)
-    (define-key map (kbd "C-c C-t") 'nm-flat-thread)
     (define-key map (kbd "C-c C-q") 'quit-window)
+    (define-key map (kbd "C-c C-t") 'nm-flat-thread)
     map)
   "Keymap for Nm mode.")
 
