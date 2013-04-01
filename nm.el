@@ -347,7 +347,81 @@
     (when index
       (nth index nm-current-matches))))
 
+(defun nm-flatten-forest (forest)
+;;  (display-message-or-buffer (format "Before: %S" forest))
+  (let ((result 
+         (apply 'append
+                (mapcar 'nm-flatten-thread forest))))
+;;    (display-message-or-buffer (format "After: %S" result))
+    result))
+
+(defun nm-flatten-thread (thread)
+  (apply 'append
+         (mapcar 'nm-flatten-tree thread)))
+
+(defun nm-flatten-tree (tree)
+  (let ((msg (car tree))
+	(replies (cadr tree)))
+    (if msg
+        (cons msg (nm-flatten-thread replies))
+      (nm-flatten-thread replies))))
+
+(defun nm-show-message (match)
+  (let* ((msg-id (concat "id:" (plist-get match :id)))
+         (thread-id (concat "thread:" (plist-get match :thread)))
+         (buffer-name (generate-new-buffer-name
+                       (concat "*notmuch-" msg-id "*"))))
+    (switch-to-buffer (get-buffer-create buffer-name))
+    (setq notmuch-show-thread-id thread-id
+	  notmuch-show-process-crypto notmuch-crypto-process-mime
+          notmuch-show-elide-non-matching-messages t
+          notmuch-show-parent-buffer nil
+	  notmuch-show-query-context nil)
+    (let ((inhibit-read-only t))
+
+      (notmuch-show-mode)
+      ;; Don't track undo information for this buffer
+      (set 'buffer-undo-list t)
+
+      (erase-buffer)
+      (goto-char (point-min))
+      (save-excursion
+        (let ((forest (ignore-errors
+                         (notmuch-call-notmuch-json
+                          "show"
+                          "--entire-thread=false"
+                          "--format=json"
+                          "--format-version=1"
+                          msg-id))))
+          (mapc
+           (lambda (msg) (notmuch-show-insert-msg msg 0))
+           (nm-flatten-forest forest))
+          ;; If the query context reduced the results to nothing, run
+          ;; the basic query.
+          (when (and (eq (buffer-size) 0)
+                     notmuch-show-query-context)
+            (notmuch-show-insert-forest
+             (notmuch-query-get-threads (append cli-args basic-args)))))
+
+        (jit-lock-register #'notmuch-show-buttonise-links)
+
+        ;; Set the header line to the subject of the first message.
+        (setq header-line-format (notmuch-show-strip-re (notmuch-show-get-subject)))
+
+        (run-hooks 'notmuch-show-hook)))
+    (notmuch-show-goto-first-wanted-message)
+    (current-buffer)))
+
 (defun nm-open-match ()
+  "Open it."
+  (interactive)
+  (let ((match (nm-match-at-pos)))
+    (when match
+      (if (nm-thread-mode)
+          (notmuch-show (concat "thread:" (plist-get match :thread)))
+        (nm-show-message match)))))
+
+(defun nm-open-match-1 ()
   "Open it."
   (interactive)
   (let ((match (nm-match-at-pos)))
