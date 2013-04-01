@@ -64,7 +64,7 @@
 
 (defconst nm-version "1.0")
 
-(defconst nm-buffer "*Nm*"
+(defconst nm-buffer "*nm*"
   "Nm buffer name.")
 
 (defconst nm-separator " | "
@@ -248,7 +248,9 @@
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert
-         (propertize "Nm: " 'face 'nm-header-face)
+         (if (nm-thread-mode)
+             (propertize "Thread search: " 'face 'nm-header-face)
+           (propertize "Message search: " 'face 'nm-header-face))
          (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)
          "\n"
          "\n")))))
@@ -294,12 +296,13 @@
 (defun nm-refresh-count ()
   (setq nm-current-count (nm-do-count nm-filter-string))
   (let ((matches (cond ((eq nm-current-count 1) "1 match")
+                       ((eq nm-current-count 0) "no matches")
                        (t (format "%d matches" nm-current-count)))))
     (if (< nm-current-count nm-results-per-screen)
-        (setq mode-name (format "Nm: %s" matches))
+        (setq mode-name (format "nevermore: %s" matches))
       (let ((first-match (1+ nm-current-offset))
             (last-match (min nm-current-count (+ nm-current-offset nm-results-per-screen))))
-        (setq mode-name (format "Nm: %d-%d of %s" first-match last-match matches))))))
+        (setq mode-name (format "nevermore: %d-%d of %s" first-match last-match matches))))))
 
 (defun nm-resize ()
   "Call this function if the size of the window changes."
@@ -321,9 +324,13 @@
       (save-excursion
         (save-window-excursion
           (let ((inhibit-read-only t))
-            (goto-char 5)
+            (goto-char 1)
             (delete-region (point) (line-end-position))
-            (insert (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
+            (insert 
+             (if (nm-thread-mode)
+                 (propertize "Thread search: " 'face 'nm-header-face)
+               (propertize "Message search: " 'face 'nm-header-face))
+             (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
       (let ((old nm-current-matches))
         (setq nm-current-matches (nm-do-search nm-filter-string))
         (nm-update-buffer old nm-current-matches)))))
@@ -345,7 +352,24 @@
   (interactive)
   (let ((match (nm-match-at-pos)))
     (when match
-      (notmuch-show (concat "thread:" (plist-get match :thread))))))
+      (if (nm-thread-mode)
+          (notmuch-show (concat "thread:" (plist-get match :thread)))
+        ;; (let ((notmuch-show-elide-non-matching-messages t))
+          ;; (notmuch-show (concat "id:" (plist-get match :id)))
+
+        (let* ((id (concat "id:" (plist-get match :id))); see notmuch-show-view-raw-message
+               (buf (get-buffer-create (concat "*notmuch-raw-" id "*"))))
+          (notmuch-tag id '("-unread"))
+          (call-process notmuch-command nil buf nil "show" "--format=raw" id)
+          (switch-to-buffer buf)
+          (goto-char (point-min))
+          (save-excursion
+            (save-restriction
+              (narrow-to-region (point-min) (point-max))
+              (run-hook-with-args 'notmuch-show-insert-text/plain-hook nil 0)))
+          (set-buffer-modified-p nil)
+          (view-buffer buf 'kill-buffer-if-not-modified))
+        ))))
 
 (defun nm-delete ()
   "Delete it."
