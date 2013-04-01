@@ -21,7 +21,7 @@
   :group 'faces)
 
 (defface nm-header-face
-  '((t :inherit font-lock-keyword-face :bold t))
+  '((t :inherit font-lock-builtin-face :bold t :underline t))
   "Face for Nm header."
   :group 'nm-faces)
 
@@ -41,17 +41,17 @@
   :group 'nm-faces)
 
 (defface nm-unread-face
-  '((t :inherit font-lock-keyword-face))
+  '((t :inherit font-lock-builtin-face :bold t))
   "Face for Nm subjects."
   :group 'nm-faces)
 
 (defface nm-read-face
-  '((t :inherit font-lock-function-name-face))
+  '((t :inherit font-lock-builtin-face))
   "Face for Nm subjects."
   :group 'nm-faces)
 
 (defface nm-authors-face
-  '((t :inherit font-lock-comment-face))
+  '((t :inherit font-lock-builtin-face :italic t))
   "Face for Nm authors."
   :group 'nm-faces)
 
@@ -83,7 +83,7 @@
 
 ;; Global variables
 
-(defvar nm-i-am-dead-inside nil
+(defvar nm-i-am-dead-inside t
   "If you are dead inside.")
 
 (defvar nm-mode-hook nil
@@ -249,8 +249,9 @@
         (erase-buffer)
         (insert
          (if (nm-thread-mode)
-             (propertize "Thread search: " 'face 'nm-header-face)
-           (propertize "Message search: " 'face 'nm-header-face))
+             (propertize "Thread search" 'face 'nm-header-face)
+           (propertize "Message search" 'face 'nm-header-face))
+         ": "
          (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)
          "\n"
          "\n")))))
@@ -328,8 +329,9 @@
             (delete-region (point) (line-end-position))
             (insert 
              (if (nm-thread-mode)
-                 (propertize "Thread search: " 'face 'nm-header-face)
-               (propertize "Message search: " 'face 'nm-header-face))
+                 (propertize "Thread search" 'face 'nm-header-face)
+               (propertize "Message search" 'face 'nm-header-face))
+             ": "
              (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
       (let ((old nm-current-matches))
         (setq nm-current-matches (nm-do-search nm-filter-string))
