@@ -211,8 +211,7 @@
 
 (defun nm-goto-first-match-pos ()
   "Render the match browser in the *nm* buffer."
-  (goto-char 1)
-  (forward-line 2))
+  (goto-char 1))
 
 (defun nm-match-text (match)
   "Return text for a line for the given MATCH."
@@ -246,18 +245,14 @@
     (insert (nm-match-text match) "\n")))
 
 (defun nm-draw-header ()
-  (save-excursion
-    (save-window-excursion
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert
-         (if (nm-thread-mode)
-             (propertize "Thread search" 'face 'nm-header-face)
-           (propertize "Message search" 'face 'nm-header-face))
-         ": "
-         (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)
-         "\n"
-         "\n")))))
+  (let ((inhibit-read-only t))
+    (setq header-line-format
+          (concat
+           (if (nm-thread-mode)
+               (propertize "Thread search" 'face 'nm-header-face)
+             (propertize "Message search" 'face 'nm-header-face))
+           ": "
+           (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
 
 (defun nm-update-buffer (old new)
   (save-excursion
@@ -314,7 +309,7 @@
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
       (setq nm-window-height (window-body-height))
-      (setq nm-results-per-screen (- nm-window-height 2))
+      (setq nm-results-per-screen nm-window-height)
       (setq nm-window-width (window-width))
       (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
       (nm-refresh))))
@@ -325,23 +320,13 @@
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
       (nm-refresh-count)
-      (save-excursion
-        (save-window-excursion
-          (let ((inhibit-read-only t))
-            (goto-char 1)
-            (delete-region (point) (line-end-position))
-            (insert 
-             (if (nm-thread-mode)
-                 (propertize "Thread search" 'face 'nm-header-face)
-               (propertize "Message search" 'face 'nm-header-face))
-             ": "
-             (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
+      (nm-draw-header)
       (let ((old nm-current-matches))
         (setq nm-current-matches (nm-do-search nm-filter-string))
         (nm-update-buffer old nm-current-matches)))))
 
 (defun nm-match-index-at-pos ()
-  (let ((index (- (line-number-at-pos) 3)))
+  (let ((index (- (line-number-at-pos) 1)))
     (if (or (< index 0)
             (>= index nm-current-count))
         nil
@@ -558,6 +543,8 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-splash-screen)
   (setq buffer-read-only t)
   (use-local-map nm-mode-map)
+  (let ((inhibit-read-only t))
+    (erase-buffer))
   (nm-draw-header)
   (setq nm-current-matches nil)
   (setq nm-current-count 0)
