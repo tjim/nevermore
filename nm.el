@@ -67,6 +67,9 @@
 (defconst nm-buffer "*nm*"
   "Nm buffer name.")
 
+(defconst nm-view-buffer "*nm-view*"
+  "Nm view buffer name.")
+
 (defconst nm-separator " | "
   "Text used to separate fields.")
 
@@ -207,7 +210,7 @@
 ;; Display
 
 (defun nm-goto-first-match-pos ()
-  "Render the match browser in the *Nm* buffer."
+  "Render the match browser in the *nm* buffer."
   (goto-char 1)
   (forward-line 2))
 
@@ -317,7 +320,7 @@
       (nm-refresh))))
 
 (defun nm-refresh ()
-  "Reapply the filter and refresh the *Nm* buffer."
+  "Reapply the filter and refresh the *nm* buffer."
   (interactive)
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
@@ -371,20 +374,17 @@
 (defun nm-show-message (match)
   (let* ((msg-id (concat "id:" (plist-get match :id)))
          (thread-id (concat "thread:" (plist-get match :thread)))
-         (buffer-name (generate-new-buffer-name
-                       (concat "*notmuch-" msg-id "*"))))
-    (switch-to-buffer (get-buffer-create buffer-name))
+         (buffer-name nm-view-buffer))
+    (switch-to-buffer-other-window (get-buffer-create buffer-name))
     (setq notmuch-show-thread-id thread-id
 	  notmuch-show-process-crypto notmuch-crypto-process-mime
           notmuch-show-elide-non-matching-messages t
           notmuch-show-parent-buffer nil
 	  notmuch-show-query-context nil)
     (let ((inhibit-read-only t))
-
       (notmuch-show-mode)
       ;; Don't track undo information for this buffer
       (set 'buffer-undo-list t)
-
       (erase-buffer)
       (goto-char (point-min))
       (save-excursion
@@ -398,21 +398,10 @@
           (mapc
            (lambda (msg) (notmuch-show-insert-msg msg 0))
            (nm-flatten-forest forest))
-          ;; If the query context reduced the results to nothing, run
-          ;; the basic query.
-          (when (and (eq (buffer-size) 0)
-                     notmuch-show-query-context)
-            (notmuch-show-insert-forest
-             (notmuch-query-get-threads (append cli-args basic-args)))))
-
         (jit-lock-register #'notmuch-show-buttonise-links)
-
-        ;; Set the header line to the subject of the first message.
-        (setq header-line-format (notmuch-show-strip-re (notmuch-show-get-subject)))
-
         (run-hooks 'notmuch-show-hook)))
     (notmuch-show-goto-first-wanted-message)
-    (current-buffer)))
+    (current-buffer))))
 
 (defun nm-open-match ()
   "Open it."
@@ -586,7 +575,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 
 ;;;###autoload
 (defun nm ()
-  "Switch to *Nm* buffer and load files."
+  "Switch to *nm* buffer and load files."
   (interactive)
   (switch-to-buffer nm-buffer)
   (if (not (eq major-mode 'nm-mode))
