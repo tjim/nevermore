@@ -1,4 +1,4 @@
-;;; N E V E R M O R E
+;;; nm.el: N E V E R M O R E
 ;;; Emacs mail application
 
 (require 'notmuch)
@@ -33,12 +33,12 @@
 
 (defface nm-unread-face
   '((t :inherit font-lock-builtin-face :bold t))
-  "Face for Nm subjects."
+  "Face for Nm unread subjects."
   :group 'nm-faces)
 
 (defface nm-read-face
   '((t :inherit font-lock-builtin-face))
-  "Face for Nm subjects."
+  "Face for Nm read subjects."
   :group 'nm-faces)
 
 (defface nm-authors-face
@@ -85,11 +85,11 @@
 
 (defvar nm-query nm-default-query)
 
-(defvar nm-current-matches nil
-  "List of matches for the current query.")
+(defvar nm-results nil
+  "List of a screen's worth of results for the current query.")
 
-(defvar nm-current-count nil
-  "Count of matches for the current query.")
+(defvar nm-all-results-count nil
+  "Count of all results for the current query.")
 
 (defvar nm-current-offset 0)
 
@@ -200,17 +200,16 @@
 
 ;; Display
 
-(defun nm-goto-first-match-pos ()
-  "Render the match browser in the *nm* buffer."
+(defun nm-goto-first-result-pos ()
   (goto-char 1))
 
-(defun nm-match-text (match)
-  "Return text for a line for the given MATCH."
-  (when match
-    (let* ((date (plist-get match :date_relative))
-           (authors (plist-get match :authors))
-           (subject (plist-get match :subject))
-           (tags (plist-get match :tags)))
+(defun nm-result-line (result)
+  "Return a line of text for a RESULT."
+  (when result
+    (let* ((date (plist-get result :date_relative))
+           (authors (plist-get result :authors))
+           (subject (plist-get result :subject))
+           (tags (plist-get result :tags)))
       (concat
        (propertize
         (nm-truncate-or-pad nm-authors-width
@@ -230,10 +229,10 @@
                               nm-empty-date))
         'face 'nm-date-face)))))
 
-(defun nm-insert-match (match)
-  "Add a line to the match browser for the given MATCH."
-  (when match
-    (insert (nm-match-text match) "\n")))
+(defun nm-insert-result (result)
+  "Add a line to the result browser for the given RESULT."
+  (when result
+    (insert (nm-result-line result) "\n")))
 
 (defun nm-draw-header ()
   (let ((inhibit-read-only t))
@@ -249,18 +248,18 @@
   (save-excursion
     (save-window-excursion
       (let ((inhibit-read-only t))
-        (nm-goto-first-match-pos)
+        (nm-goto-first-result-pos)
         (nm-update-lines old new)))))
 
-(defun nm-match-equal (a b)
+(defun nm-result-equal (a b)
   (and (equal (plist-get a :thread) (plist-get b :thread))
        (equal (plist-get a :tags) (plist-get b :tags))))
 
-(defun nm-forward-match ()
+(defun nm-forward-result ()
   (interactive)
   (forward-line 1))
-  ;; (let ((index (nm-match-index-at-pos)))
-  ;;   (when (and index (< (+1 index) nm-current-count))
+  ;; (let ((index (nm-result-index-at-pos)))
+  ;;   (when (and index (< (+1 index) nm-all-results-count))
   ;;     (forward-line 1))))
 
 (defun nm-update-lines (old new)
@@ -269,30 +268,30 @@
    ((and (not old) (not new))
     '())
    ((not old)
-    (mapc 'nm-insert-match new))
+    (mapc 'nm-insert-result new))
    ((not new)
     (delete-region (point) (point-max)))
-   ((nm-match-equal (car old) (car new))
+   ((nm-result-equal (car old) (car new))
     (progn
-      (nm-forward-match)
+      (nm-forward-result)
       (nm-update-lines (cdr old) (cdr new))))
    (t
     (progn
       (delete-region (point) (line-end-position))
-      (insert (nm-match-text (car new)))
-      (nm-forward-match)
+      (insert (nm-result-line (car new)))
+      (nm-forward-result)
       (nm-update-lines (cdr old) (cdr new))))))
 
 (defun nm-refresh-count ()
-  (setq nm-current-count (nm-do-count nm-query))
-  (let ((matches (cond ((eq nm-current-count 1) "1 match")
-                       ((eq nm-current-count 0) "no matches")
-                       (t (format "%d matches" nm-current-count)))))
-    (if (< nm-current-count nm-results-per-screen)
-        (setq mode-name (format "nevermore: %s" matches))
-      (let ((first-match (1+ nm-current-offset))
-            (last-match (min nm-current-count (+ nm-current-offset nm-results-per-screen))))
-        (setq mode-name (format "nevermore: %d-%d of %s" first-match last-match matches))))))
+  (setq nm-all-results-count (nm-do-count nm-query))
+  (let ((results (cond ((eq nm-all-results-count 1) "1 result")
+                       ((eq nm-all-results-count 0) "no results")
+                       (t (format "%d results" nm-all-results-count)))))
+    (if (< nm-all-results-count nm-results-per-screen)
+        (setq mode-name (format "nevermore: %s" results))
+      (let ((first-result (1+ nm-current-offset))
+            (last-result (min nm-all-results-count (+ nm-current-offset nm-results-per-screen))))
+        (setq mode-name (format "nevermore: %d-%d of %s" first-result last-result results))))))
 
 (defun nm-resize ()
   "Call this function if the size of the window changes."
@@ -312,21 +311,21 @@
     (with-current-buffer nm-buffer
       (nm-refresh-count)
       (nm-draw-header)
-      (let ((old nm-current-matches))
-        (setq nm-current-matches (nm-do-search nm-query))
-        (nm-update-buffer old nm-current-matches)))))
+      (let ((old nm-results))
+        (setq nm-results (nm-do-search nm-query))
+        (nm-update-buffer old nm-results)))))
 
-(defun nm-match-index-at-pos ()
+(defun nm-result-index-at-pos ()
   (let ((index (- (line-number-at-pos) 1)))
     (if (or (< index 0)
-            (>= index nm-current-count))
+            (>= index nm-all-results-count))
         nil
       index)))
 
-(defun nm-match-at-pos ()
-  (let ((index (nm-match-index-at-pos)))
+(defun nm-result-at-pos ()
+  (let ((index (nm-result-index-at-pos)))
     (when index
-      (nth index nm-current-matches))))
+      (nth index nm-results))))
 
 (defun nm-flatten-forest (forest)
 ;;  (display-message-or-buffer (format "Before: %S" forest))
@@ -347,10 +346,10 @@
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
-(defun nm-show-message (match)
+(defun nm-show-message (result)
   (save-excursion
-    (let* ((msg-id (concat "id:" (plist-get match :id)))
-           (thread-id (concat "thread:" (plist-get match :thread)))
+    (let* ((msg-id (concat "id:" (plist-get result :id)))
+           (thread-id (concat "thread:" (plist-get result :thread)))
            (forest (ignore-errors
                      (notmuch-call-notmuch-json
                       "show"
@@ -364,7 +363,7 @@
       (with-current-buffer buffer
         (setq notmuch-show-thread-id thread-id
               notmuch-show-process-crypto notmuch-crypto-process-mime
-              notmuch-show-elide-non-matching-messages t
+              notmuch-show-elide-non-resulting-messages t
               notmuch-show-parent-buffer nil
               notmuch-show-query-context nil)
         (let ((inhibit-read-only t))
@@ -378,26 +377,26 @@
           (run-hooks 'notmuch-show-hook)
           (notmuch-show-goto-first-wanted-message))))))
 
-(defun nm-open-match ()
+(defun nm-open-result ()
   "Open it."
   (interactive)
-  (let ((match (nm-match-at-pos)))
-    (when match
+  (let ((result (nm-result-at-pos)))
+    (when result
       (if (nm-thread-mode)
-          (notmuch-show (concat "thread:" (plist-get match :thread)))
-        (nm-show-message match)))))
+          (notmuch-show (concat "thread:" (plist-get result :thread)))
+        (nm-show-message result)))))
 
-(defun nm-open-match-1 ()
+(defun nm-open-result-1 ()
   "Open it."
   (interactive)
-  (let ((match (nm-match-at-pos)))
-    (when match
+  (let ((result (nm-result-at-pos)))
+    (when result
       (if (nm-thread-mode)
-          (notmuch-show (concat "thread:" (plist-get match :thread)))
-        ;; (let ((notmuch-show-elide-non-matching-messages t))
-          ;; (notmuch-show (concat "id:" (plist-get match :id)))
+          (notmuch-show (concat "thread:" (plist-get result :thread)))
+        ;; (let ((notmuch-show-elide-non-resulting-messages t))
+          ;; (notmuch-show (concat "id:" (plist-get result :id)))
 
-        (let* ((id (concat "id:" (plist-get match :id))); see notmuch-show-view-raw-message
+        (let* ((id (concat "id:" (plist-get result :id))); see notmuch-show-view-raw-message
                (buf (get-buffer-create (concat "*notmuch-raw-" id "*"))))
           (notmuch-tag id '("-unread"))
           (call-process notmuch-command nil buf nil "show" "--format=raw" id)
@@ -414,21 +413,21 @@
 (defun nm-delete ()
   "Delete it."
   (interactive)
-  (let ((match (nm-match-at-pos)))
-    (when match
+  (let ((result (nm-result-at-pos)))
+    (when result
       (if (nm-thread-mode)
-          (notmuch-tag (concat "thread:" (plist-get match :thread)) '("+deleted" "-unread" "-inbox"))
-        (notmuch-tag (concat "id:" (plist-get match :id)) '("+deleted" "-unread" "-inbox")))
+          (notmuch-tag (concat "thread:" (plist-get result :thread)) '("+deleted" "-unread" "-inbox"))
+        (notmuch-tag (concat "id:" (plist-get result :id)) '("+deleted" "-unread" "-inbox")))
       (nm-refresh))))
 
 (defun nm-archive ()
   "Archive it."
   (interactive)
-  (let ((match (nm-match-at-pos)))
-    (when match
+  (let ((result (nm-result-at-pos)))
+    (when result
       (if (nm-thread-mode)
-          (notmuch-tag (concat "thread:" (plist-get match :thread)) '("-deleted" "-unread" "-inbox"))
-        (notmuch-tag (concat "id:" (plist-get match :id)) '("-deleted" "-unread" "-inbox")))
+          (notmuch-tag (concat "thread:" (plist-get result :thread)) '("-deleted" "-unread" "-inbox"))
+        (notmuch-tag (concat "id:" (plist-get result :id)) '("-deleted" "-unread" "-inbox")))
       (nm-refresh))))
 
 ;;; Le incremental search
@@ -448,7 +447,7 @@
     (nm-refresh)))
 
 (defun nm-incrementally ()
-  "Read string with PROMPT and display results incrementally."
+  "Read query and display results incrementally."
   (interactive)
   (unwind-protect
       (minibuffer-with-setup-hook
@@ -465,7 +464,7 @@
 (defun nm-forward ()
   (interactive)
   (let ((new-offset (+ nm-current-offset nm-results-per-screen)))
-    (when (< new-offset nm-current-count)
+    (when (< new-offset nm-all-results-count)
       (setq nm-current-offset new-offset)
       (nm-refresh))))
 
@@ -484,9 +483,9 @@
    (concat "id:" message-id)))
 (defun nm-flat-thread ()
   (interactive)
-  (let ((match (nm-match-at-pos)))
-    (when match
-      (let* ((thread-id (concat "thread:" (plist-get match :thread)))
+  (let ((result (nm-result-at-pos)))
+    (when result
+      (let* ((thread-id (concat "thread:" (plist-get result :thread)))
              (messages 
               (mapcar 'nm-get-message
                       (notmuch-call-notmuch-json
@@ -507,7 +506,7 @@
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
-    (define-key map (kbd "RET") 'nm-open-match)
+    (define-key map (kbd "RET") 'nm-open-result)
     (define-key map [remap scroll-up-command] 'nm-forward)
     (define-key map [remap scroll-down-command] 'nm-backward)
     (define-key map (kbd "C-c C-a") 'nm-archive)
@@ -536,11 +535,11 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (let ((inhibit-read-only t))
     (erase-buffer))
   (nm-draw-header)
-  (setq nm-current-matches nil)
-  (setq nm-current-count 0)
+  (setq nm-results nil)
+  (setq nm-all-results-count 0)
   (setq nm-current-offset 0)
   (nm-resize)
-  (nm-goto-first-match-pos)
+  (nm-goto-first-result-pos)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'window-configuration-change-hook
