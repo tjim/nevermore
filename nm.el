@@ -368,22 +368,24 @@
                       "--format-version=1"
                       msg-id)))
            (msgs (nm-flatten-forest forest)) ; we expect a single msg only
-           (buffer-name nm-view-buffer))
-      (switch-to-buffer-other-window (get-buffer-create buffer-name))
-      (setq notmuch-show-thread-id thread-id
-            notmuch-show-process-crypto notmuch-crypto-process-mime
-            notmuch-show-elide-non-matching-messages t
-            notmuch-show-parent-buffer nil
-            notmuch-show-query-context nil)
-      (let ((inhibit-read-only t))
-        (notmuch-show-mode)
-        (set 'buffer-undo-list t)
-        (erase-buffer)
-        (goto-char (point-min))
-        (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
-        (jit-lock-register #'notmuch-show-buttonise-links)
-        (run-hooks 'notmuch-show-hook)
-        (notmuch-show-goto-first-wanted-message)))))
+           (buffer (get-buffer-create nm-view-buffer)))
+      (display-buffer buffer)
+      (with-current-buffer buffer
+        (setq notmuch-show-thread-id thread-id
+              notmuch-show-process-crypto notmuch-crypto-process-mime
+              notmuch-show-elide-non-matching-messages t
+              notmuch-show-parent-buffer nil
+              notmuch-show-query-context nil)
+        (let ((inhibit-read-only t))
+          (notmuch-show-mode)
+          (set 'buffer-undo-list t)
+          (erase-buffer)
+          (remove-overlays)
+          (goto-char (point-min))
+          (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
+          (jit-lock-register #'notmuch-show-buttonise-links)
+          (run-hooks 'notmuch-show-hook)
+          (notmuch-show-goto-first-wanted-message))))))
 
 (defun nm-open-match ()
   "Open it."
