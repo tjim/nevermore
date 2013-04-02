@@ -1,9 +1,5 @@
 ;;; N E V E R M O R E
-;;; An Emacs mail application based on the principles of
-;;;     search
-;;;     feedback
-;;;     ascii art
-;;;     gratuitous animation
+;;; Emacs mail application
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -25,14 +21,14 @@
   "Face for Nm header."
   :group 'nm-faces)
 
-(defface nm-filter-string-face
+(defface nm-query-string-face
   '((t :inherit font-lock-string-face))
-  "Face for Nm filter string."
+  "Face for Nm query string."
   :group 'nm-faces)
 
-(defface nm-filter-string-error-face
+(defface nm-query-string-error-face
   '((t :inherit font-lock-warning-face))
-  "Face for Nm filter string when regexp is invalid."
+  "Face for Nm query string when regexp is invalid."
   :group 'nm-faces)
 
 (defface nm-separator-face
@@ -82,7 +78,7 @@
 (defconst nm-empty-date "[Unknown date]"
   "Text to use as date when missing.")
 
-(defconst nm-default-filter-string "tag:inbox ")
+(defconst nm-default-query-string "tag:inbox ")
 
 ;; Global variables
 
@@ -92,17 +88,17 @@
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
-(defvar nm-filter-string nm-default-filter-string)
+(defvar nm-query-string nm-default-query-string)
 
 (defvar nm-current-matches nil
-  "List of matches for the current filter.")
+  "List of matches for the current query.")
 
 (defvar nm-current-count nil
-  "Count of matches for the current filter.")
+  "Count of matches for the current query.")
 
 (defvar nm-current-offset 0)
 
-(defvar nm-query-mode 'thread)
+(defvar nm-query-mode 'message) ; or 'thread
 
 (defvar nm-window-width nil
   "Width of Nm buffer.")
@@ -252,7 +248,7 @@
                (propertize "Thread search" 'face 'nm-header-face)
              (propertize "Message search" 'face 'nm-header-face))
            ": "
-           (propertize (nm-chomp nm-filter-string) 'face 'nm-filter-string-face)))))
+           (propertize (nm-chomp nm-query-string) 'face 'nm-query-string-face)))))
 
 (defun nm-update-buffer (old new)
   (save-excursion
@@ -293,7 +289,7 @@
       (nm-update-lines (cdr old) (cdr new))))))
 
 (defun nm-refresh-count ()
-  (setq nm-current-count (nm-do-count nm-filter-string))
+  (setq nm-current-count (nm-do-count nm-query-string))
   (let ((matches (cond ((eq nm-current-count 1) "1 match")
                        ((eq nm-current-count 0) "no matches")
                        (t (format "%d matches" nm-current-count)))))
@@ -315,14 +311,14 @@
       (nm-refresh))))
 
 (defun nm-refresh ()
-  "Reapply the filter and refresh the *nm* buffer."
+  "Reapply the query and refresh the *nm* buffer."
   (interactive)
   (when (get-buffer nm-buffer)
     (with-current-buffer nm-buffer
       (nm-refresh-count)
       (nm-draw-header)
       (let ((old nm-current-matches))
-        (setq nm-current-matches (nm-do-search nm-filter-string))
+        (setq nm-current-matches (nm-do-search nm-query-string))
         (nm-update-buffer old nm-current-matches)))))
 
 (defun nm-match-index-at-pos ()
@@ -451,8 +447,8 @@
 (defun nm-minibuffer-refresh ()
   (let ((s (nm-minibuffer-contents)))
     (if (or (not s) (equal (nm-chomp s) ""))
-        (setq nm-filter-string "*")
-      (setq nm-filter-string s))
+        (setq nm-query-string "*")
+      (setq nm-query-string s))
     (setq nm-current-offset 0)
     (nm-refresh)))
 
@@ -462,11 +458,11 @@
   (unwind-protect
       (minibuffer-with-setup-hook
           (lambda ()
-            (insert nm-filter-string)
+            (insert nm-query-string)
             (goto-char (point-max)))
         (progn
           (add-hook 'post-command-hook 'nm-minibuffer-refresh)
-          (read-string "Filter: ")))
+          (read-string "Query: ")))
     (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
 
 ;;; Navigation within results
@@ -568,9 +564,3 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
       (nm-mode)))
 
 (provide 'nm)
-
-;; Local Variables:
-;; byte-compile-warnings: (not cl-functions)
-;; End:
-
-;;; nm.el ends here
