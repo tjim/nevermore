@@ -357,36 +357,33 @@
       (nm-flatten-thread replies))))
 
 (defun nm-show-message (match)
-  (let* ((msg-id (concat "id:" (plist-get match :id)))
-         (thread-id (concat "thread:" (plist-get match :thread)))
-         (buffer-name nm-view-buffer))
-    (switch-to-buffer-other-window (get-buffer-create buffer-name))
-    (setq notmuch-show-thread-id thread-id
-	  notmuch-show-process-crypto notmuch-crypto-process-mime
-          notmuch-show-elide-non-matching-messages t
-          notmuch-show-parent-buffer nil
-	  notmuch-show-query-context nil)
-    (let ((inhibit-read-only t))
-      (notmuch-show-mode)
-      ;; Don't track undo information for this buffer
-      (set 'buffer-undo-list t)
-      (erase-buffer)
-      (goto-char (point-min))
-      (save-excursion
-        (let ((forest (ignore-errors
-                         (notmuch-call-notmuch-json
-                          "show"
-                          "--entire-thread=false"
-                          "--format=json"
-                          "--format-version=1"
-                          msg-id))))
-          (mapc
-           (lambda (msg) (notmuch-show-insert-msg msg 0))
-           (nm-flatten-forest forest))
+  (save-excursion
+    (let* ((msg-id (concat "id:" (plist-get match :id)))
+           (thread-id (concat "thread:" (plist-get match :thread)))
+           (forest (ignore-errors
+                     (notmuch-call-notmuch-json
+                      "show"
+                      "--entire-thread=false"
+                      "--format=json"
+                      "--format-version=1"
+                      msg-id)))
+           (msgs (nm-flatten-forest forest)) ; we expect a single msg only
+           (buffer-name nm-view-buffer))
+      (switch-to-buffer-other-window (get-buffer-create buffer-name))
+      (setq notmuch-show-thread-id thread-id
+            notmuch-show-process-crypto notmuch-crypto-process-mime
+            notmuch-show-elide-non-matching-messages t
+            notmuch-show-parent-buffer nil
+            notmuch-show-query-context nil)
+      (let ((inhibit-read-only t))
+        (notmuch-show-mode)
+        (set 'buffer-undo-list t)
+        (erase-buffer)
+        (goto-char (point-min))
+        (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
         (jit-lock-register #'notmuch-show-buttonise-links)
-        (run-hooks 'notmuch-show-hook)))
-    (notmuch-show-goto-first-wanted-message)
-    (current-buffer))))
+        (run-hooks 'notmuch-show-hook)
+        (notmuch-show-goto-first-wanted-message)))))
 
 (defun nm-open-match ()
   "Open it."
