@@ -21,14 +21,9 @@
   "Face for Nm header."
   :group 'nm-faces)
 
-(defface nm-query-string-face
+(defface nm-query-face
   '((t :inherit font-lock-string-face))
   "Face for Nm query string."
-  :group 'nm-faces)
-
-(defface nm-query-string-error-face
-  '((t :inherit font-lock-warning-face))
-  "Face for Nm query string when regexp is invalid."
   :group 'nm-faces)
 
 (defface nm-separator-face
@@ -78,7 +73,7 @@
 (defconst nm-empty-date "[Unknown date]"
   "Text to use as date when missing.")
 
-(defconst nm-default-query-string "tag:inbox ")
+(defconst nm-default-query "tag:inbox ")
 
 ;; Global variables
 
@@ -88,7 +83,7 @@
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
-(defvar nm-query-string nm-default-query-string)
+(defvar nm-query nm-default-query)
 
 (defvar nm-current-matches nil
   "List of matches for the current query.")
@@ -248,7 +243,7 @@
                (propertize "Thread search" 'face 'nm-header-face)
              (propertize "Message search" 'face 'nm-header-face))
            ": "
-           (propertize (nm-chomp nm-query-string) 'face 'nm-query-string-face)))))
+           (propertize (nm-chomp nm-query) 'face 'nm-query-face)))))
 
 (defun nm-update-buffer (old new)
   (save-excursion
@@ -289,7 +284,7 @@
       (nm-update-lines (cdr old) (cdr new))))))
 
 (defun nm-refresh-count ()
-  (setq nm-current-count (nm-do-count nm-query-string))
+  (setq nm-current-count (nm-do-count nm-query))
   (let ((matches (cond ((eq nm-current-count 1) "1 match")
                        ((eq nm-current-count 0) "no matches")
                        (t (format "%d matches" nm-current-count)))))
@@ -318,7 +313,7 @@
       (nm-refresh-count)
       (nm-draw-header)
       (let ((old nm-current-matches))
-        (setq nm-current-matches (nm-do-search nm-query-string))
+        (setq nm-current-matches (nm-do-search nm-query))
         (nm-update-buffer old nm-current-matches)))))
 
 (defun nm-match-index-at-pos ()
@@ -447,8 +442,8 @@
 (defun nm-minibuffer-refresh ()
   (let ((s (nm-minibuffer-contents)))
     (if (or (not s) (equal (nm-chomp s) ""))
-        (setq nm-query-string "*")
-      (setq nm-query-string s))
+        (setq nm-query "*")
+      (setq nm-query s))
     (setq nm-current-offset 0)
     (nm-refresh)))
 
@@ -458,7 +453,7 @@
   (unwind-protect
       (minibuffer-with-setup-hook
           (lambda ()
-            (insert nm-query-string)
+            (insert nm-query)
             (goto-char (point-max)))
         (progn
           (add-hook 'post-command-hook 'nm-minibuffer-refresh)
