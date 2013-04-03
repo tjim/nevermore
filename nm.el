@@ -410,25 +410,28 @@
           (view-buffer buf 'kill-buffer-if-not-modified))
         ))))
 
+(defun nm-apply-to-result (fn)
+  (let ((result (nm-result-at-pos)))
+    (when result
+      (let ((query
+             (if (nm-thread-mode)
+                 (concat "thread:" (plist-get result :thread))
+               (concat "id:" (plist-get result :id)))))
+      (funcall fn query)))))
+
 (defun nm-delete ()
   "Delete it."
   (interactive)
-  (let ((result (nm-result-at-pos)))
-    (when result
-      (if (nm-thread-mode)
-          (notmuch-tag (concat "thread:" (plist-get result :thread)) '("+deleted" "-unread" "-inbox"))
-        (notmuch-tag (concat "id:" (plist-get result :id)) '("+deleted" "-unread" "-inbox")))
-      (nm-refresh))))
+  (nm-apply-to-result (lambda (q)
+                        (notmuch-tag q '("+deleted" "-unread" "-inbox"))
+                        (nm-refresh))))
 
 (defun nm-archive ()
-  "Archive it."
+  "Delete it."
   (interactive)
-  (let ((result (nm-result-at-pos)))
-    (when result
-      (if (nm-thread-mode)
-          (notmuch-tag (concat "thread:" (plist-get result :thread)) '("-deleted" "-unread" "-inbox"))
-        (notmuch-tag (concat "id:" (plist-get result :id)) '("-deleted" "-unread" "-inbox")))
-      (nm-refresh))))
+  (nm-apply-to-result (lambda (q)
+                        (notmuch-tag q '("-deleted" "-unread" "-inbox"))
+                        (nm-refresh))))
 
 ;;; Le incremental search
 
@@ -497,6 +500,37 @@
         (switch-to-buffer "FOO")
         (mapc (lambda (m) (insert (format "%S\n" m))) messages)))))
 
+;;; Junk mail handling
+
+(defun nm-bogo-junk (query)
+  (let ((shell-command
+        (concat notmuch-command " search --output=files ("
+                (shell-quote-argument query)
+                ") and not tag:junk | bogofilter -Ns -b")))
+    (call-process-shell-command shell-command)))
+
+(defun nm-bogo-not-junk (query)
+  (let ((shell-command
+        (concat notmuch-command " search --output=files ("
+                (shell-quote-argument query)
+                ") and tag:junk | bogofilter -Sn -b")))
+    (call-process-shell-command shell-command)))
+
+(defun nm-junk (&optional arg)
+  "Mark it as junk, or, with prefix, not junk."
+  (interactive "p")
+  (nm-apply-to-result (lambda (q)
+                        (if (or (not arg) (eq arg 1))
+                            (progn
+                              (message "junk: %d" arg)
+                              (nm-bogo-junk q)
+                              (notmuch-tag q '("+junk" "+deleted" "-unread" "-inbox")))
+                          (progn
+                            (message "not junk: %d" arg)
+                            (nm-bogo-not-junk q)
+                            (notmuch-tag q '("-junk" "-deleted")))
+                        (nm-refresh)))))
+
 ;;; Mode definition
 
 (defun nm-show-version ()
@@ -512,6 +546,7 @@
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-f") 'nm-incrementally)
+    (define-key map (kbd "C-c C-j") 'nm-junk)
     (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
     (define-key map (kbd "C-c C-r") 'nm-refresh)
     (define-key map (kbd "C-c C-q") 'quit-window)
