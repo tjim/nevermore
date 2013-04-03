@@ -346,23 +346,20 @@
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
-(defun nm-show-message (result)
+(defun nm-show-messages (query)
   (save-excursion
-    (let* ((msg-id (concat "id:" (plist-get result :id)))
-           (thread-id (concat "thread:" (plist-get result :thread)))
-           (forest (ignore-errors
+    (let* ((forest (ignore-errors
                      (notmuch-call-notmuch-json
                       "show"
                       "--entire-thread=false"
                       "--format=json"
                       "--format-version=1"
-                      msg-id)))
-           (msgs (nm-flatten-forest forest)) ; we expect a single msg only
+                      query)))
+           (msgs (nm-flatten-forest forest))
            (buffer (get-buffer-create nm-view-buffer)))
       (display-buffer buffer)
       (with-current-buffer buffer
-        (setq notmuch-show-thread-id thread-id
-              notmuch-show-process-crypto notmuch-crypto-process-mime
+        (setq notmuch-show-process-crypto notmuch-crypto-process-mime
               notmuch-show-elide-non-resulting-messages t
               notmuch-show-parent-buffer nil
               notmuch-show-query-context nil)
@@ -377,39 +374,6 @@
           (run-hooks 'notmuch-show-hook)
           (notmuch-show-goto-first-wanted-message))))))
 
-(defun nm-open-result ()
-  "Open it."
-  (interactive)
-  (let ((result (nm-result-at-pos)))
-    (when result
-      (if (nm-thread-mode)
-          (notmuch-show (concat "thread:" (plist-get result :thread)))
-        (nm-show-message result)))))
-
-(defun nm-open-result-1 ()
-  "Open it."
-  (interactive)
-  (let ((result (nm-result-at-pos)))
-    (when result
-      (if (nm-thread-mode)
-          (notmuch-show (concat "thread:" (plist-get result :thread)))
-        ;; (let ((notmuch-show-elide-non-resulting-messages t))
-          ;; (notmuch-show (concat "id:" (plist-get result :id)))
-
-        (let* ((id (concat "id:" (plist-get result :id))); see notmuch-show-view-raw-message
-               (buf (get-buffer-create (concat "*notmuch-raw-" id "*"))))
-          (notmuch-tag id '("-unread"))
-          (call-process notmuch-command nil buf nil "show" "--format=raw" id)
-          (switch-to-buffer buf)
-          (goto-char (point-min))
-          (save-excursion
-            (save-restriction
-              (narrow-to-region (point-min) (point-max))
-              (run-hook-with-args 'notmuch-show-insert-text/plain-hook nil 0)))
-          (set-buffer-modified-p nil)
-          (view-buffer buf 'kill-buffer-if-not-modified))
-        ))))
-
 (defun nm-apply-to-result (fn)
   (let ((result (nm-result-at-pos)))
     (when result
@@ -419,6 +383,11 @@
                (concat "id:" (plist-get result :id)))))
       (funcall fn query)))))
 
+(defun nm-open ()
+  "Open it."
+  (interactive)
+  (nm-apply-to-result 'nm-show-messages))
+
 (defun nm-delete ()
   "Delete it."
   (interactive)
@@ -427,7 +396,7 @@
                         (nm-refresh))))
 
 (defun nm-archive ()
-  "Delete it."
+  "Archive it."
   (interactive)
   (nm-apply-to-result (lambda (q)
                         (notmuch-tag q '("-deleted" "-unread" "-inbox"))
@@ -535,7 +504,7 @@
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
-    (define-key map (kbd "RET") 'nm-open-result)
+    (define-key map (kbd "RET") 'nm-open)
     (define-key map [remap scroll-up-command] 'nm-forward)
     (define-key map [remap scroll-down-command] 'nm-backward)
     (define-key map (kbd "C-c C-a") 'nm-archive)
