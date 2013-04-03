@@ -533,11 +533,6 @@
 
 ;;; Mode definition
 
-(defun nm-show-version ()
-  "Show the version number in the minibuffer."
-  (interactive)
-  (message "Nm %s" nm-version))
-
 (defvar nm-mode-map
   (let ((map (make-keymap)))
     (define-key map (kbd "RET") 'nm-open-result)
