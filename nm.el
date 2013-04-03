@@ -408,6 +408,94 @@
                         (notmuch-tag q '("-deleted" "-unread" "-inbox"))
                         (nm-refresh))))
 
+;;; Times
+;;; We say an etime is a time as returned by encode-time
+;;; We say a dtime is a time as returned by decode-time
+
+(defun etime-compare (a b)
+  "Return <0 if a is before b, >0 if b is before a, 0 if a and b are the same time."
+  (if (eq (car a) (car b))
+      (- (cadr a) (cadr b))
+    (- (car a) (car b))))
+
+(defun etime-before (a b)
+  (< (etime-compare a b) 0))
+
+(defun next-morning (dtime)
+  "Calculate the next morning following a dtime.  Return as a dtime."
+  (let ((SEC 0)
+        (MINUTE 0)
+        (HOUR 4)
+        (DAY (cadddr dtime))
+        (REST (copy-seq (cdr(cdddr dtime)))))
+    (cons SEC (cons MINUTE (cons HOUR (cons (1+ DAY) REST))))))
+
+(defun nm-snooze ()
+  "Snooze it."
+  (interactive)
+  (nm-apply-to-result (lambda (q)
+                        (let* ((now-dtime (decode-time))
+                               (tomorrow-dtime (next-morning now-dtime))
+                               (tomorrow-etime (apply 'encode-time tomorrow-dtime))
+                               (tomorrow-etime-tag (format "+later.%d.%d" (car tomorrow-etime) (cadr tomorrow-etime))))
+                          (message "%S" tomorrow-etime-tag)
+                          (notmuch-tag q `("+later" ,tomorrow-etime-tag "-inbox"))
+                          (nm-refresh)))))
+
+(defun nm-later-to-etime (later)
+  (when (and later (string-match "later\\.\\([[:digit:]]+\\)\\.\\([[:digit:]]+\\)" later))
+    (list (string-to-number (match-string 1 later)) (string-to-number (match-string 2 later))
+          later))) ;; throw in the string itself, etime doesn't care
+
+(defun nm-wake ()
+  (interactive)
+  (let* ((nm-query-mode 'messages)
+         (messages (nm-do-search "tag:later"))
+         (now-etime (apply 'encode-time (decode-time))))
+    (mapc (lambda (msg)
+            (let* ((tags (plist-get msg :tags))
+                   (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
+              (when (and later-etime (not (etime-before now-etime later-etime)))
+                (notmuch-tag (concat "id:" (plist-get msg :id)) `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))))
+          messages))
+  (nm-refresh))
+                          
+
+;;; https://github.com/berryboy/chrono
+
+
+;;; MAYBE USEFUL, FROM PLANNER MODE, http://repo.or.cz/w/planner-el.git/blob_plain/master:/planner.el
+;; BUT there is a lot of stuff there, planner-expand-name brings in a bunch.
+;; Really need to separate out.
+;; (defun planner-read-date (&optional prompt force-read)
+;;   "Prompt for a date string in the minibuffer.
+;; If PROMPT is non-nil, display it as the prompt string.
+;; If FORCE-READ is non-nil, prompt for a date even when we are not
+;; using day pages."
+;;   (save-window-excursion
+;;     (when (or planner-use-day-pages force-read)
+;;       (let ((old-buffer (current-buffer)))
+;;         (when planner-use-calendar-flag (calendar))
+;;         (let ((old-map (copy-keymap calendar-mode-map)))
+;;           (unwind-protect
+;;               (progn
+;;                 (define-key calendar-mode-map [return]
+;;                   'planner-calendar-select)
+;;                 (define-key calendar-mode-map [mouse-1]
+;;                   'planner-calendar-select)
+;;                 (setq planner-calendar-selected-date nil)
+;;                 (let ((text (read-string
+;;                              (format "%s %s"
+;;                                      (or prompt "When")
+;;                                      (format-time-string
+;;                                       (concat "(%Y" planner-date-separator "%m"
+;;                                               planner-date-separator "%d, %m"
+;;                                        planner-date-separator "%d, %d): "))))))
+;;                   (or planner-calendar-selected-date
+;;                       (with-current-buffer old-buffer
+;;                         (planner-expand-name text)))))
+;;             (setq calendar-mode-map old-map)))))))
+
 ;;; Le incremental search
 
 (defun nm-minibuffer-contents ()
