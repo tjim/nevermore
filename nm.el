@@ -232,7 +232,11 @@
 (defun nm-insert-result (result)
   "Add a line to the result browser for the given RESULT."
   (when result
-    (insert (nm-result-line result) "\n")))
+    (if (nm-at-final-result-pos)
+        (progn
+          (message "No nl")
+          (insert (nm-result-line result)))
+      (insert (nm-result-line result) "\n"))))
 
 (defun nm-draw-header ()
   (let ((inhibit-read-only t))
@@ -257,10 +261,8 @@
 
 (defun nm-forward-result ()
   (interactive)
-  (forward-line 1))
-  ;; (let ((index (nm-result-index-at-pos)))
-  ;;   (when (and index (< (+1 index) nm-all-results-count))
-  ;;     (forward-line 1))))
+  (when (not (nm-at-final-result-pos))
+    (forward-line 1)))
 
 (defun nm-update-lines (old new)
                                         ; invariant: if old then we are at the beginning of the line for (car old)
@@ -268,7 +270,10 @@
    ((and (not old) (not new))
     '())
    ((not old)
-    (mapc 'nm-insert-result new))
+    (progn
+      (when (not (bolp))
+        (insert "\n"))
+      (mapc 'nm-insert-result new)))
    ((not new)
     (delete-region (point) (point-max)))
    ((nm-result-equal (car old) (car new))
@@ -314,6 +319,9 @@
       (let ((old nm-results))
         (setq nm-results (nm-do-search nm-query))
         (nm-update-buffer old nm-results)))))
+
+(defun nm-at-final-result-pos ()
+  (eq (1+ (nm-result-index-at-pos)) nm-results-per-screen))
 
 (defun nm-result-index-at-pos ()
   (let ((index (- (line-number-at-pos) 1)))
