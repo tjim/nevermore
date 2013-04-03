@@ -233,9 +233,7 @@
   "Add a line to the result browser for the given RESULT."
   (when result
     (if (nm-at-final-result-pos)
-        (progn
-          (message "No nl")
-          (insert (nm-result-line result)))
+          (insert (nm-result-line result))
       (insert (nm-result-line result) "\n"))))
 
 (defun nm-draw-header ()
@@ -477,6 +475,16 @@
         (switch-to-buffer "FOO")
         (mapc (lambda (m) (insert (format "%S\n" m))) messages)))))
 
+;;; Replies
+
+(defun nm-reply (&optional arg)
+  "Compose a reply.  With prefix, reply-all."
+  (interactive "p")
+  (nm-apply-to-result (lambda (q)
+                        (if (or (not arg) (eq arg 1))
+                            (notmuch-mua-new-reply q nil nil)
+                          (notmuch-mua-new-reply q nil t)))))
+
 ;;; Junk mail handling
 
 (defun nm-bogo-junk (query)
@@ -499,11 +507,9 @@
   (nm-apply-to-result (lambda (q)
                         (if (or (not arg) (eq arg 1))
                             (progn
-                              (message "junk: %d" arg)
                               (nm-bogo-junk q)
                               (notmuch-tag q '("+junk" "+deleted" "-unread" "-inbox")))
                           (progn
-                            (message "not junk: %d" arg)
                             (nm-bogo-not-junk q)
                             (notmuch-tag q '("-junk" "-deleted")))
                         (nm-refresh)))))
@@ -519,8 +525,10 @@
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-f") 'nm-incrementally)
     (define-key map (kbd "C-c C-j") 'nm-junk)
+    (define-key map (kbd "C-c C-l") 'nm-refresh)
     (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
-    (define-key map (kbd "C-c C-r") 'nm-refresh)
+    (define-key map (kbd "C-c C-n") 'notmuch-mua-new-mail)
+    (define-key map (kbd "C-c C-r") 'nm-reply)
     (define-key map (kbd "C-c C-q") 'quit-window)
     (define-key map (kbd "C-c C-t") 'nm-flat-thread)
     map)
