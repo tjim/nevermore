@@ -617,8 +617,10 @@
     (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
     (define-key map (kbd "C-c C-n") 'notmuch-mua-new-mail)
     (define-key map (kbd "C-c C-r") 'nm-reply)
+    (define-key map (kbd "C-c C-s") 'nm-snooze)
     (define-key map (kbd "C-c C-q") 'quit-window)
     (define-key map (kbd "C-c C-t") 'nm-flat-thread)
+    (define-key map (kbd "C-c C-w") 'nm-wake)
     map)
   "Keymap for Nm mode.")
 
