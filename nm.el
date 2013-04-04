@@ -428,7 +428,7 @@
         (HOUR 4)
         (DAY (cadddr dtime))
         (REST (copy-seq (cdr(cdddr dtime)))))
-    (cons SEC (cons MINUTE (cons HOUR (cons (1+ DAY) REST))))))
+    `(,SEC ,MINUTE ,HOUR ,(1+ DAY) ,@REST)))
 
 (defun nm-snooze ()
   "Snooze it."
@@ -438,26 +438,28 @@
                                (tomorrow-dtime (next-morning now-dtime))
                                (tomorrow-etime (apply 'encode-time tomorrow-dtime))
                                (tomorrow-etime-tag (format "+later.%d.%d" (car tomorrow-etime) (cadr tomorrow-etime))))
-                          (message "%S" tomorrow-etime-tag)
                           (notmuch-tag q `("+later" ,tomorrow-etime-tag "-inbox"))
                           (nm-refresh)))))
 
 (defun nm-later-to-etime (later)
   (when (and later (string-match "later\\.\\([[:digit:]]+\\)\\.\\([[:digit:]]+\\)" later))
     (list (string-to-number (match-string 1 later)) (string-to-number (match-string 2 later))
-          later))) ;; throw in the string itself, etime doesn't care
+          later))) ;; throw in the string itself, etime only cares that there are 2 initial ints
 
 (defun nm-wake ()
   (interactive)
   (let* ((nm-query-mode 'messages)
          (messages (nm-do-search "tag:later"))
-         (now-etime (apply 'encode-time (decode-time))))
+         (now-etime (apply 'encode-time (decode-time)))
+         (count 0))
     (mapc (lambda (msg)
             (let* ((tags (plist-get msg :tags))
                    (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
               (when (and later-etime (not (etime-before now-etime later-etime)))
+                (setq count (1+ count))
                 (notmuch-tag (concat "id:" (plist-get msg :id)) `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))))
-          messages))
+          messages)
+    (message "Woke %d messages" count))
   (nm-refresh))
                           
 
