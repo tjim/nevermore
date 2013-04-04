@@ -542,6 +542,49 @@
       (setq nm-current-offset new-offset)
       (nm-refresh)))
 
+;;; Navigating within in a result
+
+(defun nm-scroll-msg-up ()
+  "Scroll the nm view window forward, or display it if it is not currently displayed."
+  (interactive)
+  (let ((nm-view-buffer-window (get-buffer-window nm-view-buffer)))
+    (if nm-view-buffer-window
+        (if (let ((nm-summary-window (selected-window)))
+              (select-window nm-view-buffer-window)
+              (prog1
+                  ;; Is EOB visible in the buffer?
+                  (save-excursion
+                    (let ((ht (window-height (selected-window))))
+                      (move-to-window-line (- ht 2))
+                      (end-of-line)
+                      (eobp)))
+                (select-window nm-summary-window)))
+            (error "End of buffer")
+          (let ((other-window-scroll-buffer nm-view-buffer))
+            (scroll-other-window)))
+      ;; If it isn't visible at all, show the beginning.
+      (nm-open))))
+
+(defun nm-scroll-msg-down ()
+  "Scroll the nm view window backward.  If the view window is not shown, show it."
+  (interactive)
+  (let ((nm-view-buffer-window (get-buffer-window nm-view-buffer)))
+    (if nm-view-buffer-window
+        (if (let ((nm-summary-window (selected-window)))
+              (select-window nm-view-buffer-window)
+              (prog1
+                  ;; Is BOB visible in the buffer?
+                  (save-excursion
+                    (move-to-window-line 0)
+                    (beginning-of-line)
+                    (bobp))
+                (select-window nm-summary-window)))
+            (error "Beginning of buffer")
+          (let ((other-window-scroll-buffer nm-view-buffer))
+            (scroll-other-window-down dist)))
+      ;; If it isn't visible at all, show the beginning.
+      (nm-open))))
+
 ;;; Thread display
 
 (defun nm-get-message (message-id)
@@ -601,14 +644,16 @@
                               (notmuch-tag q '("+junk" "+deleted" "-unread" "-inbox")))
                           (progn
                             (nm-bogo-not-junk q)
-                            (notmuch-tag q '("-junk" "-deleted")))
-                        (nm-refresh)))))
+                            (notmuch-tag q '("-junk" "-deleted"))))
+                        (nm-refresh))))
 
 ;;; Mode definition
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
     (define-key map (kbd "RET") 'nm-open)
+    (define-key map " " 'nm-scroll-msg-up)
+    (define-key map (kbd "DEL") 'nm-scroll-msg-down)
     (define-key map [remap scroll-up-command] 'nm-forward)
     (define-key map [remap scroll-down-command] 'nm-backward)
     (define-key map (kbd "C-c C-a") 'nm-archive)
