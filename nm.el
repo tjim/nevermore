@@ -55,7 +55,7 @@
 
 (defconst nm-version "1.0")
 
-(defconst nm-buffer "*nm*"
+(defconst nm-results-buffer "*nm*"
   "Nm buffer name.")
 
 (defconst nm-view-buffer "*nm-view*"
@@ -76,9 +76,6 @@
 (defconst nm-default-query "tag:inbox ")
 
 ;; Global variables
-
-(defvar nm-i-am-dead-inside t
-  "If you are dead inside.")
 
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
@@ -114,19 +111,6 @@
   "Width of authors in Nm buffer.")
 
 ;; Helpers
-
-(defun nm-splash-screen ()
-  (let ((animation-buffer-restore
-         (if (boundp 'animation-buffer-name)
-             (let ((saved-animation-buffer-name animation-buffer-name))
-               (lambda () (setq animation-buffer-name saved-animation-buffer-name)))
-           (lambda () (makunbound 'animation-buffer-name)))))
-    (unwind-protect
-        (when (not nm-i-am-dead-inside)
-          (setq animation-buffer-name nm-buffer)
-          (animate-sequence '("N E V E R M O R E") 0)
-          (sit-for 1))
-      (funcall animation-buffer-restore))))
 
 (defun nm-thread-mode ()
   (equal nm-query-mode 'thread))
@@ -232,9 +216,7 @@
 (defun nm-insert-result (result)
   "Add a line to the result browser for the given RESULT."
   (when result
-    (if (nm-at-final-result-pos)
-          (insert (nm-result-line result))
-      (insert (nm-result-line result) "\n"))))
+    (insert (nm-result-line result) "\n")))
 
 (defun nm-draw-header ()
   (let ((inhibit-read-only t))
@@ -250,8 +232,14 @@
   (save-excursion
     (save-window-excursion
       (let ((inhibit-read-only t))
+        (when (not (eq (point-min) (point-max)))
+          (goto-char (point-max))
+          (insert "\n"))
         (nm-goto-first-result-pos)
-        (nm-update-lines old new)))))
+        (nm-update-lines old new)
+        (when (not (eq (point-min) (point-max)))
+          (goto-char (point-max))
+          (delete-backward-char 1))))))
 
 (defun nm-result-equal (a b)
   (and (equal (plist-get a :thread) (plist-get b :thread))
@@ -268,10 +256,7 @@
    ((and (not old) (not new))
     '())
    ((not old)
-    (progn
-      (when (not (bolp))
-        (insert "\n"))
-      (mapc 'nm-insert-result new)))
+    (mapc 'nm-insert-result new))
    ((not new)
     (delete-region (point) (point-max)))
    ((nm-result-equal (car old) (car new))
@@ -282,7 +267,8 @@
     (progn
       (delete-region (point) (line-end-position))
       (insert (nm-result-line (car new)))
-      (nm-forward-result)
+      (forward-line)
+;;      (nm-forward-result)
       (nm-update-lines (cdr old) (cdr new))))))
 
 (defun nm-refresh-count ()
@@ -299,19 +285,22 @@
 (defun nm-resize ()
   "Call this function if the size of the window changes."
   (interactive)
-  (when (get-buffer nm-buffer)
-    (with-current-buffer nm-buffer
+  (when (get-buffer nm-results-buffer)
+    (with-current-buffer nm-results-buffer
       (setq nm-window-height (window-body-height))
       (setq nm-results-per-screen nm-window-height)
       (setq nm-window-width (window-width))
       (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
+      (let ((inhibit-read-only t))
+        (erase-buffer))
+      (setq nm-results nil)
       (nm-refresh))))
 
 (defun nm-refresh ()
   "Reapply the query and refresh the *nm* buffer."
   (interactive)
-  (when (get-buffer nm-buffer)
-    (with-current-buffer nm-buffer
+  (when (get-buffer nm-results-buffer)
+    (with-current-buffer nm-results-buffer
       (nm-refresh-count)
       (nm-draw-header)
       (let ((old nm-results))
@@ -681,7 +670,6 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 \\{nm-mode-map}."
   (kill-all-local-variables)
   (setq truncate-lines t)
-  (nm-splash-screen)
   (setq buffer-read-only t)
   (use-local-map nm-mode-map)
   (let ((inhibit-read-only t))
@@ -696,7 +684,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'window-configuration-change-hook
             (lambda ()
-              (when (and (eq (current-buffer) (get-buffer nm-buffer))
+              (when (and (eq (current-buffer) (get-buffer nm-results-buffer))
                          (not (and (eq nm-window-width (window-width))
                                    (eq nm-window-height (window-body-height)))))
                 (nm-resize)))))
@@ -705,7 +693,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 (defun nm ()
   "Switch to *nm* buffer and load files."
   (interactive)
-  (switch-to-buffer nm-buffer)
+  (switch-to-buffer nm-results-buffer)
   (if (not (eq major-mode 'nm-mode))
       (nm-mode)))
 
