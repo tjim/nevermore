@@ -228,18 +228,19 @@
            ": "
            (propertize (nm-chomp nm-query) 'face 'nm-query-face)))))
 
+;;; Needs to be installed as a post-command-hook for the nm-results-buffer.
+;;; Ensures that the cursor doesn't get past the last line of the results,
+;;; which would cause undesired scrolling.
+(defun nm-results-post-command ()
+  (if (eobp)
+      (forward-line -1)))
+
 (defun nm-update-buffer (old new)
   (save-excursion
     (save-window-excursion
       (let ((inhibit-read-only t))
-        (when (not (eq (point-min) (point-max)))
-          (goto-char (point-max))
-          (insert "\n"))
         (nm-goto-first-result-pos)
-        (nm-update-lines old new)
-        (when (not (eq (point-min) (point-max)))
-          (goto-char (point-max))
-          (delete-backward-char 1))))))
+        (nm-update-lines old new)))))
 
 (defun nm-result-equal (a b)
   (and (equal (plist-get a :thread) (plist-get b :thread))
@@ -682,6 +683,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-goto-first-result-pos)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
+  (add-hook 'post-command-hook 'nm-results-post-command nil t)
   (add-hook 'window-configuration-change-hook
             (lambda ()
               (when (and (eq (current-buffer) (get-buffer nm-results-buffer))
