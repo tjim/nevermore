@@ -231,9 +231,26 @@
 ;;; Needs to be installed as a post-command-hook for the nm-results-buffer.
 ;;; Ensures that the cursor doesn't get past the last line of the results,
 ;;; which would cause undesired scrolling.
+(defvar nm-results-overlay nil
+  "Overlay used to highlight the current result.")
+(put 'nm-results-overlay 'permanent-local t)
+(defun nm-highlight-result ()
+  ;; Make sure we have an overlay to use.
+  (or nm-results-overlay
+      (progn
+        (make-local-variable 'nm-results-overlay)
+        (setq nm-results-overlay (make-overlay (point) (point)))
+        (overlay-put nm-results-overlay 'nm-results t)))
+  (move-overlay nm-results-overlay
+                (save-excursion (beginning-of-line)
+                                (point))
+                (line-end-position))
+  (overlay-put nm-results-overlay 'face 'highlight))
+
 (defun nm-results-post-command ()
   (if (eobp)
-      (forward-line -1)))
+      (forward-line -1))
+  (nm-highlight-result))
 
 (defun nm-update-buffer (old new)
   (save-excursion
@@ -358,7 +375,7 @@
         (setq notmuch-show-process-crypto notmuch-crypto-process-mime
               notmuch-show-elide-non-resulting-messages t
               notmuch-show-parent-buffer nil
-              notmuch-show-query-context nil)
+               notmuch-show-query-context nil)
         (let ((inhibit-read-only t))
           (notmuch-show-mode)
           (set 'buffer-undo-list t)
