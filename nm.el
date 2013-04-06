@@ -654,6 +654,11 @@
                             (notmuch-tag q '("-junk" "-deleted"))))
                         (nm-refresh))))
 
+(defun nm-reset ()
+  (interactive)
+  (setq nm-query nm-default-query)
+  (nm-refresh))
+
 ;;; Mode definition
 
 (defvar nm-mode-map
@@ -666,6 +671,7 @@
     (define-key map (kbd "C-c C-a") 'nm-archive)
     (define-key map (kbd "C-c C-d") 'nm-delete)
     (define-key map (kbd "C-c C-f") 'nm-incrementally)
+    (define-key map (kbd "C-c C-g") 'nm-reset)
     (define-key map (kbd "C-c C-j") 'nm-junk)
     (define-key map (kbd "C-c C-l") 'nm-refresh)
     (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
