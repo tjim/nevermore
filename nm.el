@@ -521,17 +521,15 @@
     (setq nm-current-offset 0)
     (nm-refresh)))
 
+(defvar nm-query-history (list nm-default-query))
+
 (defun nm-incrementally ()
   "Read query and display results incrementally."
   (interactive)
   (unwind-protect
-      (minibuffer-with-setup-hook
-          (lambda ()
-            (insert nm-query)
-            (goto-char (point-max)))
-        (progn
-          (add-hook 'post-command-hook 'nm-minibuffer-refresh)
-          (read-string "Query: ")))
+      (progn
+        (add-hook 'post-command-hook 'nm-minibuffer-refresh)
+        (read-string "Query: " nm-query 'nm-query-history))
     (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
 
 ;;; Navigation within results
