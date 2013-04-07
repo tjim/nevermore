@@ -92,9 +92,6 @@
 
 (defvar nm-query-mode 'message) ; or 'thread
 
-(defvar nm-window-width nil
-  "Width of Nm buffer.")
-
 (defvar nm-window-height nil
   "Height of Nm buffer.")
 
@@ -105,9 +102,6 @@
   "Width of dates in Nm buffer.")
 
 (defvar nm-authors-width 20
-  "Width of authors in Nm buffer.")
-
-(defvar nm-subject-width nil
   "Width of authors in Nm buffer.")
 
 ;; Helpers
@@ -196,22 +190,21 @@
            (tags (plist-get result :tags)))
       (concat
        (propertize
+        (nm-truncate-or-pad nm-date-width
+                            (if date date
+                              nm-empty-date))
+        'face 'nm-date-face)
+       (propertize nm-separator 'face 'nm-separator-face)
+       (propertize
         (nm-truncate-or-pad nm-authors-width
                             (if authors authors
                               nm-empty-authors))
         'face 'nm-authors-face)
-      (propertize nm-separator 'face 'nm-separator-face)
-      (propertize
-       (nm-truncate-or-pad nm-subject-width
-                           (if (and subject (> (length subject) 0)) subject
-                             nm-empty-subject))
-       'face (if (member "unread" tags) 'nm-unread-face 'nm-read-face))
-      (propertize nm-separator 'face 'nm-separator-face)
-      (propertize
-        (nm-truncate-or-pad nm-date-width
-                            (if date date
-                              nm-empty-date))
-        'face 'nm-date-face)))))
+       (propertize nm-separator 'face 'nm-separator-face)
+       (propertize
+        (if (and subject (> (length subject) 0)) subject
+          nm-empty-subject)
+        'face (if (member "unread" tags) 'nm-unread-face 'nm-read-face))))))
 
 (defun nm-insert-result (result)
   "Add a line to the result browser for the given RESULT."
@@ -307,8 +300,6 @@
     (with-current-buffer nm-results-buffer
       (setq nm-window-height (window-body-height))
       (setq nm-results-per-screen nm-window-height)
-      (setq nm-window-width (window-width))
-      (setq nm-subject-width (- nm-window-width nm-authors-width nm-date-width (* 2 (length nm-separator))))
       (let ((inhibit-read-only t))
         (erase-buffer))
       (setq nm-results nil)
@@ -708,8 +699,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (add-hook 'window-configuration-change-hook
             (lambda ()
               (when (and (eq (current-buffer) (get-buffer nm-results-buffer))
-                         (not (and (eq nm-window-width (window-width))
-                                   (eq nm-window-height (window-body-height)))))
+                         (not (eq nm-window-height (window-body-height))))
                 (nm-resize)))))
 
 ;;;###autoload
