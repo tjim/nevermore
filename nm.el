@@ -164,7 +164,9 @@
    0)))
 
 (defun nm-async-count-filter (proc string)
-  (message "Count: %s" (nm-chomp string)))
+  (message "Count: %s Status: %S" (nm-chomp string) (process-status proc)))
+;; (defun nm-async-count-filter (proc string)
+;;   (message "Count: %s" (nm-chomp string)))
 (defun nm-async-count (query)
   (interactive "sEnter query to count: ")
   (let* ((output (if (nm-thread-mode)
@@ -513,13 +515,18 @@
       (with-current-buffer (window-buffer (active-minibuffer-window))
         (minibuffer-contents))))
 
+(defvar nm-update-delay 0.2)
+
 (defun nm-minibuffer-refresh ()
-  (let ((s (nm-minibuffer-contents)))
-    (if (or (not s) (equal (nm-chomp s) ""))
-        (setq nm-query "*")
-      (setq nm-query s))
-    (setq nm-current-offset 0)
-    (nm-refresh)))
+  (let* ((s0 (nm-minibuffer-contents))
+         (s (if (or (not s0) (equal (nm-chomp s0) ""))
+                "*"
+              s0)))
+    (when (and (not (equal (nm-chomp s) (nm-chomp nm-query)))
+               (sit-for nm-update-delay))
+      (setq nm-query s)
+      (setq nm-current-offset 0)
+      (nm-refresh))))
 
 (defvar nm-query-history (list nm-default-query))
 
