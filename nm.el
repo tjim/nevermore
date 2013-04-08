@@ -163,6 +163,16 @@
       query))
    0)))
 
+(defun nm-async-count-filter (proc string)
+  (message "Count: %s" (nm-chomp string)))
+(defun nm-async-count (query)
+  (interactive "sEnter query to count: ")
+  (let* ((output (if (nm-thread-mode)
+                     "--output=threads"
+                   "--output=messages"))
+         (proc (start-process "nm-async-count" "*nm-async-count*" notmuch-command "count" output query)))
+    (set-process-filter proc 'nm-async-count-filter)))
+
 (defun nm-chomp (str)
   "Trim leading and trailing whitespace from STR."
   (replace-regexp-in-string "\\(^[[:space:]\n]*\\|[[:space:]\n]*$\\)" "" str))
