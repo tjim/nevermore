@@ -47,7 +47,7 @@
   :group 'nm-faces)
 
 (defface nm-date-face
-  '((t :inherit font-lock-constant-face :bold t))
+  '((t :inherit font-lock-type-face :bold t))
   "Face for Nm dates."
   :group 'nm-faces)
 
