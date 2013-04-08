@@ -235,8 +235,7 @@
         (setq nm-results-overlay (make-overlay (point) (point)))
         (overlay-put nm-results-overlay 'nm-results t)))
   (move-overlay nm-results-overlay
-                (save-excursion (beginning-of-line)
-                                (point))
+                (line-beginning-position)
                 (line-end-position))
   (overlay-put nm-results-overlay 'face 'highlight))
 
