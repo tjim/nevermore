@@ -163,18 +163,6 @@
       query))
    0)))
 
-(defun nm-async-count-filter (proc string)
-  (message "Count: %s Status: %S" (nm-chomp string) (process-status proc)))
-;; (defun nm-async-count-filter (proc string)
-;;   (message "Count: %s" (nm-chomp string)))
-(defun nm-async-count (query)
-  (interactive "sEnter query to count: ")
-  (let* ((output (if (nm-thread-mode)
-                     "--output=threads"
-                   "--output=messages"))
-         (proc (start-process "nm-async-count" "*nm-async-count*" notmuch-command "count" output query)))
-    (set-process-filter proc 'nm-async-count-filter)))
-
 (defun nm-chomp (str)
   "Trim leading and trailing whitespace from STR."
   (replace-regexp-in-string "\\(^[[:space:]\n]*\\|[[:space:]\n]*$\\)" "" str))
@@ -293,16 +281,45 @@
 ;;      (nm-forward-result)
       (nm-update-lines (cdr old) (cdr new))))))
 
-(defun nm-refresh-count ()
-  (setq nm-all-results-count (nm-do-count nm-query))
-  (let ((results (cond ((eq nm-all-results-count 1) "1 result")
-                       ((eq nm-all-results-count 0) "no results")
-                       (t (format "%d results" nm-all-results-count)))))
-    (if (< nm-all-results-count nm-results-per-screen)
-        (setq mode-name (format "nevermore: %s" results))
-      (let ((first-result (1+ nm-current-offset))
-            (last-result (min nm-all-results-count (+ nm-current-offset nm-results-per-screen))))
-        (setq mode-name (format "nevermore: %d-%d of %s" first-result last-result results))))))
+;; maintain count
+(defvar nm-async-count-pending-query nil)
+(defvar nm-async-count-pending-proc nil)
+(defun nm-async-count ()
+  (interactive)
+  (if nm-async-count-pending-proc
+      (ignore-errors (kill-process nm-async-count-pending-proc)))
+  (let ((output (if (nm-thread-mode)
+                    "--output=threads"
+                  "--output=messages")))
+    (setq nm-all-results-count nil)
+    (setq nm-async-count-pending-query nm-query)
+    (setq nm-async-count-pending-proc
+          (start-process "nm-async-count" "*nm-async-count*" notmuch-command "count" output nm-query))
+    (set-process-filter nm-async-count-pending-proc 
+                        (lambda (proc string)
+                          (when (equal nm-query nm-async-count-pending-query)
+                            (setq nm-all-results-count (string-to-number (nm-chomp string)))
+                            (setq nm-async-count-pending-query nil)
+                            (setq nm-async-count-pending-proc nil)
+                            (nm-refresh-count-display))))))
+(defun nm-setq-mode-name (s)
+  (with-current-buffer nm-results-buffer
+    (setq mode-name s)
+    (force-mode-line-update)))
+(defun nm-refresh-count-display ()
+  (let* ((first-result (1+ nm-current-offset))
+         (len (length nm-results))
+         (last-result (+ nm-current-offset len)))
+    (when (and (not nm-all-results-count) (not (eq len nm-results-per-screen)))
+      (setq nm-all-results-count last-result))
+    (if nm-all-results-count
+        (let ((results (cond ((eq nm-all-results-count 1) "1 result")
+                             ((eq nm-all-results-count 0) "no results")
+                             (t (format "%d results" nm-all-results-count)))))
+          (if (< nm-all-results-count nm-results-per-screen)
+              (nm-setq-mode-name (format "nevermore: %s" results))
+            (nm-setq-mode-name (format "nevermore: %d-%d of %s" first-result last-result results))))
+      (nm-setq-mode-name (format "nevermore: %d-%d" first-result last-result)))))
 
 (defun nm-resize ()
   "Call this function if the size of the window changes."
@@ -321,21 +338,19 @@
   (interactive)
   (when (get-buffer nm-results-buffer)
     (with-current-buffer nm-results-buffer
-      (nm-refresh-count)
+      (nm-async-count)
       (nm-draw-header)
       (let ((old nm-results))
         (setq nm-results (nm-do-search nm-query))
+        (nm-refresh-count-display)
         (nm-update-buffer old nm-results)))))
 
 (defun nm-at-final-result-pos ()
   (eq (1+ (nm-result-index-at-pos)) nm-results-per-screen))
 
 (defun nm-result-index-at-pos ()
-  (let ((index (- (line-number-at-pos) 1)))
-    (if (or (< index 0)
-            (>= index nm-all-results-count))
-        nil
-      index)))
+  (and nm-results
+       (- (line-number-at-pos) 1)))
 
 (defun nm-result-at-pos ()
   (let ((index (nm-result-index-at-pos)))
@@ -515,7 +530,7 @@
       (with-current-buffer (window-buffer (active-minibuffer-window))
         (minibuffer-contents))))
 
-(defvar nm-update-delay 0.2)
+(defvar nm-update-delay 0.1)
 
 (defun nm-minibuffer-refresh ()
   (let* ((s0 (nm-minibuffer-contents))
@@ -543,14 +558,14 @@
 
 (defun nm-forward ()
   (interactive)
-  (let ((new-offset (+ nm-current-offset nm-results-per-screen)))
-    (when (< new-offset nm-all-results-count)
+  (let ((new-offset (+ nm-current-offset nm-results-per-screen -1)))
+    (when (or (not nm-all-results-count) (< new-offset nm-all-results-count)) ; at least one result will be in range
       (setq nm-current-offset new-offset)
       (nm-refresh))))
 
 (defun nm-backward ()
   (interactive)
-  (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen))))
+  (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen -1))))
       (setq nm-current-offset new-offset)
       (nm-refresh)))
 
@@ -705,7 +720,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
     (erase-buffer))
   (nm-draw-header)
   (setq nm-results nil)
-  (setq nm-all-results-count 0)
+  (setq nm-all-results-count nil)
   (setq nm-current-offset 0)
   (nm-resize)
   (nm-goto-first-result-pos)
