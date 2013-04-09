@@ -472,23 +472,37 @@
 
 (defun nm-wake ()
   (interactive)
-  (let* ((nm-query-mode 'messages)
-         (messages (nm-do-search "tag:later"))
-         (now-etime (apply 'encode-time (decode-time)))
-         (count 0))
-    (mapc (lambda (msg)
-            (let* ((tags (plist-get msg :tags))
-                   (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
-              (when (and later-etime (not (etime-before now-etime later-etime)))
-                (setq count (1+ count))
-                (notmuch-tag (concat "id:" (plist-get msg :id)) `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))))
-          messages)
-    (message "Woke %d messages" count))
-  (nm-refresh))
-                          
+  (let* ((now-etime (apply 'encode-time (decode-time)))
+         (count 0)
+         (messages (notmuch-call-notmuch-json
+                       "search"
+                       "--output=messages"
+                       "--format=json"
+                       "--format-version=1"
+                       "tag:later")))
+    (mapc
+     (lambda (message-id)
+       (let* ((query (concat "id:" message-id))
+              (msg (car
+                    (notmuch-call-notmuch-json
+                     "search"
+                     "--output=summary"
+                     "--format=json"
+                     "--format-version=1"
+                     query)))
+              (tags (plist-get msg :tags))
+              (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
+         (when (and later-etime (not (etime-before now-etime later-etime)))
+           (setq count (1+ count))
+           (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))))
+     messages)
+    (cond
+     ((eq count 0) (message "No messages are ready to wake up"))
+     ((eq count 1) (message "Woke 1 message"))
+     (t (message "Woke %d messages" count)))
+    (nm-refresh)))
 
 ;;; https://github.com/berryboy/chrono
-
 
 ;;; MAYBE USEFUL, FROM PLANNER MODE, http://repo.or.cz/w/planner-el.git/blob_plain/master:/planner.el
 ;; BUT there is a lot of stuff there, planner-expand-name brings in a bunch.
