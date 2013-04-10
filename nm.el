@@ -87,7 +87,11 @@
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
-(defvar nm-query nm-default-query)
+(defvar nm-query nm-default-query
+  "The current query whose results are in the nm-results-buffer.")
+
+(defvar nm-view-buffer-contents-query nil
+  "The current query whose contents are in the nm-view-buffer.")
 
 (defvar nm-results nil
   "List of a screen's worth of results for the current query.")
@@ -260,10 +264,19 @@ buffer containing notmuch's output and signal an error."
                 (line-end-position))
   (overlay-put nm-results-overlay 'face 'highlight))
 
+(defun nm-view-buffer-update ()
+  "Make sure the view window (if it exists) is showing the current query."
+  (let ((nm-view-buffer-window (get-buffer-window nm-view-buffer)))
+    (when nm-view-buffer-window
+      (nm-apply-to-result (lambda (q)
+                            (when (not (equal q nm-view-buffer-contents-query))
+                              (nm-show-messages q nil)))))))
+
 (defun nm-results-post-command ()
   (if (eobp)
       (forward-line -1))
-  (nm-highlight-result))
+  (nm-highlight-result)
+  (nm-view-buffer-update))
 
 (defun nm-update-buffer (old new)
   (save-excursion
@@ -406,7 +419,8 @@ buffer containing notmuch's output and signal an error."
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
-(defun nm-show-messages (query)
+(defun nm-show-messages (query &optional nodisplay)
+  "Show the messages of QUERY in the nm-view-buffer.  If (not NODISPLAY) then make sure that the buffer is displayed."
   (let* ((forest (ignore-errors
                    (nm-call-notmuch
                     "show"
@@ -414,7 +428,7 @@ buffer containing notmuch's output and signal an error."
                     query)))
          (msgs (nm-flatten-forest forest))
          (buffer (get-buffer-create nm-view-buffer)))
-    (display-buffer buffer)
+    (setq nm-view-buffer-contents-query query)
     (with-current-buffer buffer
       (setq notmuch-show-process-crypto notmuch-crypto-process-mime
             notmuch-show-elide-non-resulting-messages t
@@ -429,7 +443,8 @@ buffer containing notmuch's output and signal an error."
         (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
         (jit-lock-register #'notmuch-show-buttonise-links)
         (run-hooks 'notmuch-show-hook)
-        (notmuch-show-goto-first-wanted-message)))))
+        (notmuch-show-goto-first-wanted-message)))
+    (when (not nodisplay) (display-buffer buffer))))
 
 (defun nm-apply-to-result (fn)
   (let ((result (nm-result-at-pos)))
