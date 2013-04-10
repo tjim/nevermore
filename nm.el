@@ -1,5 +1,12 @@
 ;;; nm.el: N E V E R M O R E
-;;; Emacs mail application
+;;;
+;;; Emacs mail application with
+;;; * Incremental search by message or thread
+;;; * Snooze
+;;; * Junk filtering
+;;; * TODO tag editing
+;;; * TODO mail address completion
+;;; * TODO IMAP integration
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -193,7 +200,7 @@ buffer containing notmuch's output and signal an error."
 ;; Display
 
 (defun nm-goto-first-result-pos ()
-  (goto-char 1))
+  (goto-char (point-min)))
 
 (defun nm-result-line (result)
   "Return a line of text for a RESULT."
@@ -340,12 +347,22 @@ buffer containing notmuch's output and signal an error."
   (interactive)
   (when (get-buffer nm-results-buffer)
     (with-current-buffer nm-results-buffer
-      (setq nm-window-height (window-body-height))
-      (setq nm-results-per-screen nm-window-height)
-      (let ((inhibit-read-only t))
-        (erase-buffer))
-      (setq nm-results nil)
-      (nm-refresh))))
+      (let* ((new-window-height (window-body-height))
+             (getting-shorter (and nm-window-height (< new-window-height nm-window-height)))
+             (current-line (line-number-at-pos))
+             (must-change-offset (and getting-shorter (> current-line new-window-height))))
+        (setq nm-window-height new-window-height)
+        (setq nm-results-per-screen nm-window-height)
+        (when must-change-offset
+          (setq nm-current-offset (+ nm-current-offset current-line -1))) ; old result will be at top
+        (let ((inhibit-read-only t))
+          (erase-buffer))
+        (setq nm-results nil)
+        (nm-refresh)
+        (when (not (> current-line new-window-height))
+;          (message "trying for %d" current-line) ; this doesn't work for some reason
+          (goto-char (point-min))
+          (forward-line (1- current-line)))))))
 
 (defun nm-refresh ()
   "Reapply the query and refresh the *nm* buffer."
