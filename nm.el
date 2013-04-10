@@ -361,9 +361,7 @@ buffer containing notmuch's output and signal an error."
         (nm-refresh)
         (when (not (> current-line new-window-height))
           (goto-char (point-min))
-          (forward-line (1- current-line))
-          (message "aimed for %d, now at %d" current-line (line-number-at-pos)) ; this doesn't work for some reason
-)))))
+          (forward-line (1- current-line)))))))
 
 (defun nm-refresh ()
   "Reapply the query and refresh the *nm* buffer."
