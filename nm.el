@@ -360,9 +360,10 @@ buffer containing notmuch's output and signal an error."
         (setq nm-results nil)
         (nm-refresh)
         (when (not (> current-line new-window-height))
-;          (message "trying for %d" current-line) ; this doesn't work for some reason
           (goto-char (point-min))
-          (forward-line (1- current-line)))))))
+          (forward-line (1- current-line))
+          (message "aimed for %d, now at %d" current-line (line-number-at-pos)) ; this doesn't work for some reason
+)))))
 
 (defun nm-refresh ()
   "Reapply the query and refresh the *nm* buffer."
@@ -408,30 +409,29 @@ buffer containing notmuch's output and signal an error."
       (nm-flatten-thread replies))))
 
 (defun nm-show-messages (query)
-  (save-excursion
-    (let* ((forest (ignore-errors
-                     (nm-call-notmuch
-                      "show"
-                      "--entire-thread=false"
-                      query)))
-           (msgs (nm-flatten-forest forest))
-           (buffer (get-buffer-create nm-view-buffer)))
-      (display-buffer buffer)
-      (with-current-buffer buffer
-        (setq notmuch-show-process-crypto notmuch-crypto-process-mime
-              notmuch-show-elide-non-resulting-messages t
-              notmuch-show-parent-buffer nil
-               notmuch-show-query-context nil)
-        (let ((inhibit-read-only t))
-          (notmuch-show-mode)
-          (set 'buffer-undo-list t)
-          (erase-buffer)
-          (remove-overlays)
-          (goto-char (point-min))
-          (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
-          (jit-lock-register #'notmuch-show-buttonise-links)
-          (run-hooks 'notmuch-show-hook)
-          (notmuch-show-goto-first-wanted-message))))))
+  (let* ((forest (ignore-errors
+                   (nm-call-notmuch
+                    "show"
+                    "--entire-thread=false"
+                    query)))
+         (msgs (nm-flatten-forest forest))
+         (buffer (get-buffer-create nm-view-buffer)))
+    (display-buffer buffer)
+    (with-current-buffer buffer
+      (setq notmuch-show-process-crypto notmuch-crypto-process-mime
+            notmuch-show-elide-non-resulting-messages t
+            notmuch-show-parent-buffer nil
+            notmuch-show-query-context nil)
+      (let ((inhibit-read-only t))
+        (notmuch-show-mode)
+        (set 'buffer-undo-list t)
+        (erase-buffer)
+        (remove-overlays)
+        (goto-char (point-min))
+        (mapc (lambda (msg) (notmuch-show-insert-msg msg 0)) msgs)
+        (jit-lock-register #'notmuch-show-buttonise-links)
+        (run-hooks 'notmuch-show-hook)
+        (notmuch-show-goto-first-wanted-message)))))
 
 (defun nm-apply-to-result (fn)
   (let ((result (nm-result-at-pos)))
