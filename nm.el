@@ -116,37 +116,51 @@
     (setq nm-query-mode 'thread))
   (nm-refresh))
 
+(defun nm-call-notmuch (&rest args)
+  "Invoke `notmuch-command' with `args' and return the output.
+
+If notmuch exits with a non-zero status, this will pop up a
+buffer containing notmuch's output and signal an error."
+  (with-temp-buffer
+    (let ((err-file (make-temp-file "nm-error")))
+      (unwind-protect
+	  (let ((status (apply #'call-process
+			       notmuch-command nil (list t err-file) nil
+                               (car args) ; search, show, count, etc.
+                               "--format=sexp"
+                               "--format-version=1"
+                               (cdr args))))
+	    (notmuch-check-exit-status status (cons notmuch-command args)
+				       (buffer-string) err-file)
+	    (goto-char (point-min))
+            (read (current-buffer)))
+	(delete-file err-file)))))
+
 (defun nm-do-search (query)
   (if (nm-thread-mode)
       (ignore-errors
-        (notmuch-call-notmuch-json
+        (nm-call-notmuch
          "search"
          "--output=summary"
          (format "--offset=%d" nm-current-offset)
          (format "--limit=%d" nm-results-per-screen)
-         "--format=json"
-         "--format-version=1"
          "--sort=newest-first"
          query))
     (ignore-errors
-      (let ((messages (notmuch-call-notmuch-json
+      (let ((messages (nm-call-notmuch
                        "search"
                        "--output=messages"
                        (format "--offset=%d" nm-current-offset)
                        (format "--limit=%d" nm-results-per-screen)
-                       "--format=json"
-                       "--format-version=1"
                        "--sort=newest-first"
                        query)))
         (mapcar
          (lambda (message-id)
            (plist-put
             (car
-             (notmuch-call-notmuch-json
+             (nm-call-notmuch
               "search"
               "--output=summary"
-              "--format=json"
-              "--format-version=1"
               (concat "id:" message-id)))
             :id message-id))
          messages)))))
@@ -157,7 +171,7 @@
                   "--output=messages")))
   (or 
    (ignore-errors
-     (notmuch-call-notmuch-json
+     (nm-call-notmuch
       "count"
       output
       query))
@@ -379,11 +393,9 @@
 (defun nm-show-messages (query)
   (save-excursion
     (let* ((forest (ignore-errors
-                     (notmuch-call-notmuch-json
+                     (nm-call-notmuch
                       "show"
                       "--entire-thread=false"
-                      "--format=json"
-                      "--format-version=1"
                       query)))
            (msgs (nm-flatten-forest forest))
            (buffer (get-buffer-create nm-view-buffer)))
@@ -474,21 +486,17 @@
   (interactive)
   (let* ((now-etime (apply 'encode-time (decode-time)))
          (count 0)
-         (messages (notmuch-call-notmuch-json
+         (messages (nm-call-notmuch
                        "search"
                        "--output=messages"
-                       "--format=json"
-                       "--format-version=1"
                        "tag:later")))
     (mapc
      (lambda (message-id)
        (let* ((query (concat "id:" message-id))
               (msg (car
-                    (notmuch-call-notmuch-json
+                    (nm-call-notmuch
                      "search"
                      "--output=summary"
-                     "--format=json"
-                     "--format-version=1"
                      query)))
               (tags (plist-get msg :tags))
               (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
@@ -629,9 +637,8 @@
 ;;; Thread display
 
 (defun nm-get-message (message-id)
-  (notmuch-call-notmuch-json
+  (nm-call-notmuch
    "show"
-   "--format=json"
    (concat "id:" message-id)))
 (defun nm-flat-thread ()
   (interactive)
@@ -640,10 +647,9 @@
       (let* ((thread-id (concat "thread:" (plist-get result :thread)))
              (messages 
               (mapcar 'nm-get-message
-                      (notmuch-call-notmuch-json
+                      (nm-call-notmuch
                        "search"
                        "--output=messages"
-                       "--format=json"
                        "--sort=oldest-first"
                        thread-id))))
         (switch-to-buffer "FOO")
