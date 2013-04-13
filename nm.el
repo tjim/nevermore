@@ -7,6 +7,8 @@
 ;;; * TODO tag editing
 ;;; * TODO mail address completion
 ;;; * TODO IMAP integration
+;;; * TODO diary integration
+;;; * TODO snooze by natural date
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -261,7 +263,7 @@ buffer containing notmuch's output and signal an error."
         (overlay-put nm-results-overlay 'nm-results t)))
   (move-overlay nm-results-overlay
                 (line-beginning-position)
-                (line-end-position))
+                (line-beginning-position 2))
   (overlay-put nm-results-overlay 'face 'highlight))
 
 (defun nm-view-buffer-update ()
@@ -287,6 +289,7 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-result-equal (a b)
   (and (equal (plist-get a :thread) (plist-get b :thread))
+       (equal (plist-get a :date_relative) (plist-get b :date_relative))
        (equal (plist-get a :tags) (plist-get b :tags))))
 
 (defun nm-forward-result ()
