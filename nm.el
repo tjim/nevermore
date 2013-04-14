@@ -422,6 +422,79 @@ buffer containing notmuch's output and signal an error."
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
+;;; in progress
+;;; works but slow on mapc of many files 
+(defun nm-mail-header-length (file)
+  (let ((header-length
+;         (ignore-errors
+           (with-temp-buffer
+             (let ((err-file (make-temp-file "nm-grep-error")))
+               (unwind-protect
+                   (let ((status (apply #'call-process
+                                        "grep" nil (list t err-file) nil
+                                        "-b" "-h" "-m" "1" "^$" file nil)))
+                     (if (not (eq status 0)) -1
+                       (progn
+                         (goto-char (point-max))
+                         (delete-char -2)
+;                         (read (current-buffer))
+                         (string-to-number (buffer-string))
+                         )))
+                 (delete-file err-file))))))
+    header-length))
+
+(defun nm-addresses-from (filename header-length)
+  (ignore-errors
+    (with-temp-buffer
+      (insert-file-contents-literally filename nil 0 header-length)
+      (mail-extract-address-components (mail-fetch-field "To") t))))
+(defun nm-to-addresses ()
+  (let* ((files (ignore-errors
+                   (nm-call-notmuch
+                    "search"
+                    "--output=files"
+                    "--format=sexp"
+                    "from:trevor@att.com or from:tjim@mac.com or from:trevor@research.att.com or from:tjim@cs.princeton.edu or from:tj2586@att.com")))
+         (header-lengths (when files
+                           (let ((files-file (make-temp-file "nm-files")))
+                             (unwind-protect
+                                 (progn
+                                   (with-temp-file files-file
+                                     (mapc (lambda (f) (insert f "\0"))
+                                           files))
+                                   (with-temp-buffer
+                                     (call-process-shell-command "xargs -0 grep -h -m 1 -b '^$'" files-file t)
+                                     (insert ")")
+                                     (goto-char (point-min))
+                                     (insert "(")
+                                     (while (search-forward ":" nil t)
+                                       (replace-match "" nil t))
+                                     (goto-char (point-min))
+                                     (read (current-buffer))))
+                               (delete-file files-file))))))
+    (let (results)
+      (while (and files header-lengths)
+        (setq results (cons (nm-addresses-from (car files) (car header-lengths)) results)
+              files (cdr files)
+              header-lengths (cdr header-lengths)))
+      (delete-dups (apply 'append results)))))
+
+(defun nm-addresses ()
+  (let* ((froms "from:trevor@att.com or from:tjim@mac.com or from:trevor@research.att.com or from:tjim@cs.princeton.edu or from:tj2586@att.com")
+         (shell-command
+          (format "notmuch search --output=files --format=text0 %s | xargs -0 grep -h -m 1 -b '^$'"
+                  (shell-quote-argument froms))))
+    (with-temp-buffer
+      (call-process-shell-command shell-command nil t)
+      (insert ")")
+      (goto-char (point-min))
+      (insert "(")
+      (while (search-forward ":" nil t)
+        (replace-match "" nil t))
+      (goto-char (point-min))
+      (read (current-buffer)))))
+;;;
+
 (defun nm-show-messages (query &optional nodisplay)
   "Show the messages of QUERY in the nm-view-buffer.  If (not NODISPLAY) then make sure that the buffer is displayed."
   (let* ((forest (ignore-errors
