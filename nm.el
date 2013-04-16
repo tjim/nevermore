@@ -4,8 +4,11 @@
 ;;; * Incremental search by message or thread
 ;;; * Snooze
 ;;; * Junk filtering
-;;; * TODO tag editing
+;;; * TODO auto wakeup
 ;;; * TODO mail address completion
+;;; * TODO tag display
+;;; * TODO tag editing
+;;; * TODO tag completion
 ;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
@@ -612,7 +615,7 @@ buffer containing notmuch's output and signal an error."
     (list (string-to-number (match-string 1 later)) (string-to-number (match-string 2 later))
           later))) ;; throw in the string itself, etime only cares that there are 2 initial ints
 
-(defun nm-wake ()
+(defun nm-wakeup ()
   (interactive)
   (let* ((now-etime (apply 'encode-time (decode-time)))
          (count 0)
@@ -850,7 +853,7 @@ buffer containing notmuch's output and signal an error."
     (define-key map (kbd "C-c C-s") 'nm-snooze)
     (define-key map (kbd "C-c C-q") 'quit-window)
     (define-key map (kbd "C-c C-t") 'nm-flat-thread)
-    (define-key map (kbd "C-c C-w") 'nm-wake)
+    (define-key map (kbd "C-c C-w") 'nm-wakeup)
     map)
   "Keymap for Nm mode.")
 
