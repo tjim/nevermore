@@ -863,6 +863,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 
 \\{nm-mode-map}."
   (kill-all-local-variables)
+  (setq default-directory "~/")
   (setq truncate-lines t)
   (setq buffer-read-only t)
   (use-local-map nm-mode-map)
