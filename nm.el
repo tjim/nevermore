@@ -4,7 +4,7 @@
 ;;; * Incremental search by message or thread
 ;;; * Snooze
 ;;; * Junk filtering
-;;; * TODO auto wakeup
+;;; * TODO UI for wakeup times
 ;;; * TODO mail address completion
 ;;; * TODO tag display
 ;;; * TODO tag editing
@@ -599,6 +599,9 @@ buffer containing notmuch's output and signal an error."
         (REST (copy-seq (cdr(cdddr dtime)))))
     `(,SEC ,MINUTE ,HOUR ,(1+ DAY) ,@REST)))
 
+(defvar nm-wakeup-timer nil)
+(defvar nm-wakeup-etime nil)
+
 (defun nm-snooze ()
   "Snooze it."
   (interactive)
@@ -608,6 +611,11 @@ buffer containing notmuch's output and signal an error."
                                (tomorrow-etime (apply 'encode-time tomorrow-dtime))
                                (tomorrow-etime-tag (format "+later.%d.%d" (car tomorrow-etime) (cadr tomorrow-etime))))
                           (notmuch-tag q `("+later" ,tomorrow-etime-tag "-inbox"))
+                          (when (or (not nm-wakeup-etime)                          ; no wakeup time is set
+                                    (etime-before tomorrow-etime nm-wakeup-etime)) ; or wakeup time is after tomorrow
+                                (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
+                                (setq nm-wakeup-etime tomorrow-etime)
+                                (setq nm-wakeup-timer (run-at-time tomorrow-etime nil nm-wakeup)))
                           (nm-refresh)))))
 
 (defun nm-later-to-etime (later)
@@ -617,6 +625,10 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-wakeup ()
   (interactive)
+  (setq nm-wakeup-etime nil)
+  (when nm-wakeup-timer
+    (cancel-timer nm-wakeup-timer)
+    (setq nm-wakeup-timer nil))
   (let* ((now-etime (apply 'encode-time (decode-time)))
          (count 0)
          (messages (nm-call-notmuch
@@ -633,10 +645,18 @@ buffer containing notmuch's output and signal an error."
                      query)))
               (tags (plist-get msg :tags))
               (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
-         (when (and later-etime (not (etime-before now-etime later-etime)))
-           (setq count (1+ count))
-           (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))))
+         (when later-etime
+           (if (not (etime-before now-etime later-etime))
+                                        ; later-etime <= now-etime: wake up
+               (progn
+                 (setq count (1+ count))
+                 (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))
+                                        ; later-etime > now-etime: find time to set timer for
+             (when (or (not nm-wakeup-etime) (etime-before later-etime nm-wakeup-etime))
+               (setq nm-wakeup-etime later-etime))))))
      messages)
+    (when nm-wakeup-etime
+      (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil nm-wakeup)))
     (cond
      ((eq count 0) (message "No messages are ready to wake up"))
      ((eq count 1) (message "Woke 1 message"))
@@ -877,6 +897,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (setq nm-all-results-count nil)
   (setq nm-current-offset 0)
   (nm-resize)
+  (nm-wakeup)
   (nm-goto-first-result-pos)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
