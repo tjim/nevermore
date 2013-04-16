@@ -615,7 +615,7 @@ buffer containing notmuch's output and signal an error."
                                     (etime-before tomorrow-etime nm-wakeup-etime)) ; or wakeup time is after tomorrow
                                 (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
                                 (setq nm-wakeup-etime tomorrow-etime)
-                                (setq nm-wakeup-timer (run-at-time tomorrow-etime nil nm-wakeup)))
+                                (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
                           (nm-refresh)))))
 
 (defun nm-later-to-etime (later)
@@ -653,10 +653,13 @@ buffer containing notmuch's output and signal an error."
                  (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))
                                         ; later-etime > now-etime: find time to set timer for
              (when (or (not nm-wakeup-etime) (etime-before later-etime nm-wakeup-etime))
-               (setq nm-wakeup-etime later-etime))))))
+               (let ((later-etime
+                      ; our later-etime may have >2 elements, run-at-time does not like this
+                      (list (car later-etime) (cadr later-etime))))
+                 (setq nm-wakeup-etime later-etime)))))))
      messages)
     (when nm-wakeup-etime
-      (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil nm-wakeup)))
+      (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
     (cond
      ((eq count 0) (message "No messages are ready to wake up"))
      ((eq count 1) (message "Woke 1 message"))
