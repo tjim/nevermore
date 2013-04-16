@@ -423,6 +423,23 @@ buffer containing notmuch's output and signal an error."
       (nm-flatten-thread replies))))
 
 ;;; in progress
+(defun f (x); maybe useful for completion.  Really ought to build a hash table.
+  (let ((email (car (last x)))
+        (name (car x)))
+    (if (not name)
+        `((,email ,email))
+      (let* ((result (format "%s <%s>" name email))
+             (name-words (split-string (car x)))
+             (firstname (car name-words))
+             (lastname (car (last name-words))))
+        `((,email ,result)
+          (,name ,result)
+          (,firstname ,result)
+          (,lastname ,result))))))
+;; try this
+;(let ((completion-ignore-case t))
+;  (all-completions "mona" (f '("Mona Singh" "mona@cs.princeton.edu"))))
+
 ;;; works but slow on mapc of many files 
 (defun nm-mail-header-length (file)
   (let ((header-length
@@ -477,7 +494,14 @@ buffer containing notmuch's output and signal an error."
         (setq results (cons (nm-addresses-from (car files) (car header-lengths)) results)
               files (cdr files)
               header-lengths (cdr header-lengths)))
-      (delete-dups (apply 'append results)))))
+      (mapcar
+       (lambda (parts)
+         (let ((name (car parts))
+               (email (cadr parts)))
+           (if name
+               (format "%s <%s>" name email)
+             email)))
+       (delete-dups (apply 'append results))))))
 
 (defun nm-addresses ()
   (let* ((froms "from:trevor@att.com or from:tjim@mac.com or from:trevor@research.att.com or from:tjim@cs.princeton.edu or from:tj2586@att.com")
