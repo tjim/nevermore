@@ -243,8 +243,7 @@ buffer containing notmuch's output and signal an error."
         'face (if (member "unread" tags) 'nm-unread-face 'nm-read-face))
        (when tags
          (propertize
-          (replace-regexp-in-string "\\\"" ""
-                                    (format " %S" tags))
+          (format " (%s)" (mapconcat 'identity tags " "))
           'face 'nm-tags-face))))))
 
 (defun nm-insert-result (result)
