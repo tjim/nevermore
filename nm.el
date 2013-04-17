@@ -6,7 +6,7 @@
 ;;; * Junk filtering
 ;;; * TODO UI for wakeup times
 ;;; * TODO mail address completion
-;;; * TODO tag display
+;;; * TODO more navigation fixes (next-line, beginning-of-buffer)
 ;;; * TODO tag editing
 ;;; * TODO tag completion
 ;;; * TODO IMAP integration
@@ -65,7 +65,7 @@
   :group 'nm-faces)
 
 (defface nm-tags-face
-  '((t :inherit font-lock-type-face :bold t))
+  '((t :inherit font-lock-string-face :bold t))
   "Face for Nm tags."
   :group 'nm-faces)
 
