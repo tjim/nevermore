@@ -12,6 +12,7 @@
 ;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
+;;; * TODO triage (http://rowansimpson.com/2013/04/16/triage/)
 
 (require 'notmuch)
 (require 'notmuch-lib)
@@ -61,6 +62,11 @@
 (defface nm-date-face
   '((t :inherit font-lock-type-face :bold t))
   "Face for Nm dates."
+  :group 'nm-faces)
+
+(defface nm-tags-face
+  '((t :inherit font-lock-type-face :bold t))
+  "Face for Nm tags."
   :group 'nm-faces)
 
 ;; Constants
@@ -234,7 +240,12 @@ buffer containing notmuch's output and signal an error."
        (propertize
         (if (and subject (> (length subject) 0)) subject
           nm-empty-subject)
-        'face (if (member "unread" tags) 'nm-unread-face 'nm-read-face))))))
+        'face (if (member "unread" tags) 'nm-unread-face 'nm-read-face))
+       (when tags
+         (propertize
+          (replace-regexp-in-string "\\\"" ""
+                                    (format " %S" tags))
+          'face 'nm-tags-face))))))
 
 (defun nm-insert-result (result)
   "Add a line to the result browser for the given RESULT."
