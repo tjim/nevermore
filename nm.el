@@ -435,50 +435,15 @@ buffer containing notmuch's output and signal an error."
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
-;;; in progress
-(defun f (x); maybe useful for completion.  Really ought to build a hash table.
-  (let ((email (car (last x)))
-        (name (car x)))
-    (if (not name)
-        `((,email ,email))
-      (let* ((result (format "%s <%s>" name email))
-             (name-words (split-string (car x)))
-             (firstname (car name-words))
-             (lastname (car (last name-words))))
-        `((,email ,result)
-          (,name ,result)
-          (,firstname ,result)
-          (,lastname ,result))))))
-;; try this
-;(let ((completion-ignore-case t))
-;  (all-completions "mona" (f '("Mona Singh" "mona@cs.princeton.edu"))))
-
-;;; works but slow on mapc of many files 
-(defun nm-mail-header-length (file)
-  (let ((header-length
-;         (ignore-errors
-           (with-temp-buffer
-             (let ((err-file (make-temp-file "nm-grep-error")))
-               (unwind-protect
-                   (let ((status (apply #'call-process
-                                        "grep" nil (list t err-file) nil
-                                        "-b" "-h" "-m" "1" "^$" file nil)))
-                     (if (not (eq status 0)) -1
-                       (progn
-                         (goto-char (point-max))
-                         (delete-char -2)
-;                         (read (current-buffer))
-                         (string-to-number (buffer-string))
-                         )))
-                 (delete-file err-file))))))
-    header-length))
-
-(defun nm-addresses-from (filename header-length)
+;;; completion
+(defvar nm-addresses nil)
+(defun nm-addresses-from-file (filename header-length)
   (ignore-errors
     (with-temp-buffer
       (insert-file-contents-literally filename nil 0 header-length)
       (mail-extract-address-components (mail-fetch-field "To") t))))
-(defun nm-to-addresses ()
+(defun nm-harvest-addresses ()
+  (interactive)
   (let* ((files (ignore-errors
                    (nm-call-notmuch
                     "search"
@@ -504,32 +469,19 @@ buffer containing notmuch's output and signal an error."
                                (delete-file files-file))))))
     (let (results)
       (while (and files header-lengths)
-        (setq results (cons (nm-addresses-from (car files) (car header-lengths)) results)
+        (setq results (cons (nm-addresses-from-file (car files) (car header-lengths)) results)
               files (cdr files)
               header-lengths (cdr header-lengths)))
-      (mapcar
-       (lambda (parts)
-         (let ((name (car parts))
-               (email (cadr parts)))
-           (if name
-               (format "%s <%s>" name email)
-             email)))
-       (delete-dups (apply 'append results))))))
+      (setq nm-addresses
+            (mapcar
+             (lambda (parts)
+               (let ((name (car parts))
+                     (email (cadr parts)))
+                 (if name
+                     (format "%s <%s>" name email)
+                   email)))
+             (delete-dups (apply 'append results)))))))
 
-(defun nm-addresses ()
-  (let* ((froms "from:trevor@att.com or from:tjim@mac.com or from:trevor@research.att.com or from:tjim@cs.princeton.edu or from:tj2586@att.com")
-         (shell-command
-          (format "notmuch search --output=files --format=text0 %s | xargs -0 grep -h -m 1 -b '^$'"
-                  (shell-quote-argument froms))))
-    (with-temp-buffer
-      (call-process-shell-command shell-command nil t)
-      (insert ")")
-      (goto-char (point-min))
-      (insert "(")
-      (while (search-forward ":" nil t)
-        (replace-match "" nil t))
-      (goto-char (point-min))
-      (read (current-buffer)))))
 ;;;
 
 (defun nm-show-messages (query &optional nodisplay)
@@ -928,5 +880,108 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (switch-to-buffer nm-results-buffer)
   (if (not (eq major-mode 'nm-mode))
       (nm-mode)))
+
+;;; completion
+(require 'company)
+(eval-when-compile (require 'cl))
+
+;; (defun company-nm-insert (match)
+;;   "Replace MATCH with the expanded abbrev."
+;;   (expand-abbrev))
+
+;;;###autoload
+(defun company-nm-insert (completion-text)
+  (let* ((end (point))
+         (beg (save-excursion
+                (re-search-backward "\\(\\`\\|[\n:,]\\)[ \t]*")
+                (goto-char (match-end 0))
+                (point))))
+    (delete-region beg end)
+    (goto-char beg)
+    (message "completion-text: %s" completion-text)
+    (insert completion-text)))
+(setq company-frontends '(company-pseudo-tooltip-frontend))
+(defun company-nm (command &optional arg &rest ignored)
+  "`company-mode' completion back-end for nm."
+  (interactive (list 'interactive))
+  (case command
+    (interactive (company-begin-backend 'company-nm
+                                        'company-nm-insert))
+    (prefix (let* ((end (point))
+                   (beg (save-excursion
+                          (re-search-backward "\\(\\`\\|[\n:,]\\)[ \t]*")
+                          (goto-char (match-end 0))
+                          (point))))
+              (buffer-substring-no-properties beg end)))
+    (candidates (let ((completion-ignore-case t))
+                  (let ((results (car (completion-substring--all-completions arg nm-addresses nil 0))))
+;                    (message "%d results: %S" (length results) results)
+                    results)))
+    (ignore-case t)
+    (no-cache t)
+    (sorted t)))
+
+;;; HACK: override this function from company.el for substring completion
+(defun company--create-lines (selection limit)
+
+  (let ((len company-candidates-length)
+        (numbered 99999)
+        lines
+        width
+        lines-copy
+        previous
+        remainder
+        new)
+
+    ;; Scroll to offset.
+    (setq limit (company-pseudo-tooltip-update-offset selection len limit))
+
+    (when (> company-tooltip-offset 0)
+      (setq previous (format "...(%d)" company-tooltip-offset)))
+
+    (setq remainder (- len limit company-tooltip-offset)
+          remainder (when (> remainder 0)
+                      (setq remainder (format "...(%d)" remainder))))
+
+    (decf selection company-tooltip-offset)
+    (setq width (max (length previous) (length remainder))
+          lines (nthcdr company-tooltip-offset company-candidates)
+          len (min limit len)
+          lines-copy lines)
+
+    (dotimes (i len)
+      (setq width (max (length (pop lines-copy)) width)))
+    (setq width (min width (window-width)))
+
+    (setq lines-copy lines)
+
+    ;; number can make tooltip too long
+    (when company-show-numbers
+      (setq numbered company-tooltip-offset))
+
+    (when previous
+      (push (propertize (company-safe-substring previous 0 width)
+                        'face 'company-tooltip)
+            new))
+
+    (dotimes (i len)
+      (push (company-fill-propertize
+             (if (>= numbered 10)
+                 (pop lines)
+               (incf numbered)
+               (format "%s %d"
+                       (company-safe-substring (pop lines)
+                                               0 (- width 2))
+                       (mod numbered 10)))
+             width (equal i selection))
+            new))
+
+    (when remainder
+      (push (propertize (company-safe-substring remainder 0 width)
+                        'face 'company-tooltip)
+            new))
+
+    (setq lines (nreverse new))))
+
 
 (provide 'nm)
