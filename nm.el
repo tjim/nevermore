@@ -539,6 +539,15 @@ buffer containing notmuch's output and signal an error."
                         (notmuch-tag q '("-deleted" "-unread" "-inbox"))
                         (nm-refresh))))
 
+(defun nm-forward ()
+  "Forward it."
+  (interactive)
+  (nm-apply-to-result
+   (lambda (q)
+     (nm-show-messages q t)))
+  (with-current-buffer nm-view-buffer
+    (notmuch-mua-forward-message)))
+
 ;;; Times
 ;;; We say an etime is a time as returned by encode-time
 ;;; We say a dtime is a time as returned by decode-time
@@ -696,14 +705,14 @@ buffer containing notmuch's output and signal an error."
 
 ;;; Navigation within results
 
-(defun nm-forward ()
+(defun nm-forward-page ()
   (interactive)
   (let ((new-offset (+ nm-current-offset nm-results-per-screen -1)))
     (when (or (not nm-all-results-count) (< new-offset nm-all-results-count)) ; at least one result will be in range
       (setq nm-current-offset new-offset)
       (nm-refresh))))
 
-(defun nm-backward ()
+(defun nm-backward-page ()
   (interactive)
   (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen -1))))
       (setq nm-current-offset new-offset)
@@ -775,13 +784,17 @@ buffer containing notmuch's output and signal an error."
 
 ;;; Replies
 
-(defun nm-reply (&optional arg)
-  "Compose a reply.  With prefix, reply-all."
-  (interactive "p")
+(defun nm-reply ()
+  "Compose a reply."
+  (interactive)
   (nm-apply-to-result (lambda (q)
-                        (if (or (not arg) (eq arg 1))
-                            (notmuch-mua-new-reply q nil nil)
-                          (notmuch-mua-new-reply q nil t)))))
+                        (notmuch-mua-new-reply q nil nil))))
+
+(defun nm-reply-all ()
+  "Compose a reply-all."
+  (interactive)
+  (nm-apply-to-result (lambda (q)
+                        (notmuch-mua-new-reply q nil t))))
 
 ;;; Junk mail handling
 
@@ -821,24 +834,27 @@ buffer containing notmuch's output and signal an error."
 
 (defvar nm-mode-map
   (let ((map (make-keymap)))
+    (suppress-keymap map)
     (define-key map (kbd "RET") 'nm-open)
     (define-key map " " 'nm-scroll-msg-up)
     (define-key map (kbd "DEL") 'nm-scroll-msg-down)
-    (define-key map [remap scroll-up-command] 'nm-forward)
-    (define-key map [remap scroll-down-command] 'nm-backward)
-    (define-key map (kbd "C-c C-a") 'nm-archive)
-    (define-key map (kbd "C-c C-d") 'nm-delete)
-    (define-key map (kbd "C-c C-f") 'nm-incrementally)
-    (define-key map (kbd "C-c C-g") 'nm-reset)
-    (define-key map (kbd "C-c C-j") 'nm-junk)
-    (define-key map (kbd "C-c C-l") 'nm-refresh)
-    (define-key map (kbd "C-c C-m") 'nm-toggle-query-mode)
-    (define-key map (kbd "C-c C-n") 'notmuch-mua-new-mail)
-    (define-key map (kbd "C-c C-r") 'nm-reply)
-    (define-key map (kbd "C-c C-s") 'nm-snooze)
-    (define-key map (kbd "C-c C-q") 'quit-window)
-    (define-key map (kbd "C-c C-t") 'nm-flat-thread)
-    (define-key map (kbd "C-c C-w") 'nm-wakeup)
+    (define-key map [remap scroll-up-command] 'nm-forward-page)
+    (define-key map [remap scroll-down-command] 'nm-backward-page)
+    (define-key map "\C-c\C-g" 'nm-reset)
+    (define-key map "\C-c\C-l" 'nm-refresh)
+    (define-key map "\C-c\C-m" 'nm-toggle-query-mode)
+    (define-key map "/" 'nm-incrementally)
+    (define-key map "a" 'nm-archive)
+    (define-key map "d" 'nm-delete)
+    (define-key map "f" 'nm-forward)
+    (define-key map "J" 'nm-junk)
+    (define-key map "m" 'notmuch-mua-new-mail)
+    (define-key map "r" 'nm-reply)
+    (define-key map "R" 'nm-reply-all)
+    (define-key map "s" 'nm-snooze)
+    (define-key map "q" 'quit-window)
+    (define-key map "t" 'nm-flat-thread)
+    (define-key map "W" 'nm-wakeup)
     map)
   "Keymap for Nm mode.")
 
