@@ -158,6 +158,26 @@ buffer containing notmuch's output and signal an error."
             (read (current-buffer)))
 	(delete-file err-file)))))
 
+(defun nm-my-addresses ()
+  "Obtain my email addresses from notmuch."
+  (with-temp-buffer
+    (let ((err-file (make-temp-file "nm-error")))
+      (unwind-protect
+	  (let* ((args '("config" "get" "user.primary_email"))
+                 (status (apply #'call-process
+                                notmuch-command nil (list t err-file) nil
+                                args)))
+	    (notmuch-check-exit-status status (cons notmuch-command args)
+				       (buffer-string) err-file)
+            (let* ((args2 '("config" "get" "user.other_email"))
+                   (status2 (apply #'call-process
+                                   notmuch-command nil (list t err-file) nil
+                                   args2)))
+              (notmuch-check-exit-status status2 (cons notmuch-command args2)
+                                         (buffer-string) err-file)
+              (delete-dups (split-string (buffer-string) "\n" t))))
+	(delete-file err-file)))))
+
 (defun nm-do-search (query)
   (if (nm-thread-mode)
       (ignore-errors
@@ -436,20 +456,21 @@ buffer containing notmuch's output and signal an error."
       (nm-flatten-thread replies))))
 
 ;;; completion
-(defvar nm-addresses nil)
-(defun nm-addresses-from-file (filename header-length)
+(defvar nm-completion-addresses nil)
+(defun nm-completion-addresses-from-file (filename header-length)
   (ignore-errors
     (with-temp-buffer
       (insert-file-contents-literally filename nil 0 header-length)
       (mail-extract-address-components (mail-fetch-field "To") t))))
 (defun nm-harvest-addresses ()
   (interactive)
-  (let* ((files (ignore-errors
+  (let* ((from-me (mapconcat (lambda (x) (concat "from:" x)) (nm-my-addresses) " or "))
+         (files (ignore-errors
                    (nm-call-notmuch
                     "search"
                     "--output=files"
                     "--format=sexp"
-                    "from:trevor@att.com or from:tjim@mac.com or from:trevor@research.att.com or from:tjim@cs.princeton.edu or from:tj2586@att.com")))
+                    from-me)))
          (header-lengths (when files
                            (let ((files-file (make-temp-file "nm-files")))
                              (unwind-protect
@@ -469,10 +490,10 @@ buffer containing notmuch's output and signal an error."
                                (delete-file files-file))))))
     (let (results)
       (while (and files header-lengths)
-        (setq results (cons (nm-addresses-from-file (car files) (car header-lengths)) results)
+        (setq results (cons (nm-completion-addresses-from-file (car files) (car header-lengths)) results)
               files (cdr files)
               header-lengths (cdr header-lengths)))
-      (setq nm-addresses
+      (setq nm-completion-addresses
             (mapcar
              (lambda (parts)
                (let ((name (car parts))
@@ -930,8 +951,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
                           (point))))
               (buffer-substring-no-properties beg end)))
     (candidates (let ((completion-ignore-case t))
-                  (let ((results (car (completion-substring--all-completions arg nm-addresses nil 0))))
-;                    (message "%d results: %S" (length results) results)
+                  (let ((results (car (completion-substring--all-completions arg nm-completion-addresses nil 0))))
                     results)))
     (ignore-case t)
     (no-cache t)
