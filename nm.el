@@ -7,8 +7,6 @@
 ;;; * TODO UI for wakeup times
 ;;; * TODO mail address completion
 ;;; * TODO more navigation fixes (next-line, beginning-of-buffer)
-;;; * TODO tag editing
-;;; * TODO tag completion
 ;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
@@ -550,15 +548,15 @@ buffer containing notmuch's output and signal an error."
   "Delete it."
   (interactive)
   (nm-apply-to-result (lambda (q)
-                        (notmuch-tag q '("+deleted" "-unread" "-inbox"))
-                        (nm-refresh))))
+                        (notmuch-tag q '("+deleted" "-unread" "-inbox"))))
+  (nm-refresh))
 
 (defun nm-archive ()
   "Archive it."
   (interactive)
   (nm-apply-to-result (lambda (q)
-                        (notmuch-tag q '("-deleted" "-unread" "-inbox"))
-                        (nm-refresh))))
+                        (notmuch-tag q '("-deleted" "-unread" "-inbox"))))
+  (nm-refresh))
 
 (defun nm-forward ()
   "Forward it."
@@ -568,6 +566,12 @@ buffer containing notmuch's output and signal an error."
      (nm-show-messages q t)))
   (with-current-buffer nm-view-buffer
     (notmuch-mua-forward-message)))
+
+(defun nm-tag ()
+  "Tag it."
+  (interactive)
+  (nm-apply-to-result 'notmuch-tag)
+  (nm-refresh))
 
 ;;; Times
 ;;; We say an etime is a time as returned by encode-time
@@ -874,7 +878,7 @@ buffer containing notmuch's output and signal an error."
     (define-key map "R" 'nm-reply-all)
     (define-key map "s" 'nm-snooze)
     (define-key map "q" 'quit-window)
-    (define-key map "t" 'nm-flat-thread)
+    (define-key map "t" 'nm-tag)
     (define-key map "W" 'nm-wakeup)
     map)
   "Keymap for Nm mode.")
