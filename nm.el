@@ -782,7 +782,7 @@ buffer containing notmuch's output and signal an error."
                 (select-window nm-summary-window)))
             (error "Beginning of buffer")
           (let ((other-window-scroll-buffer nm-view-buffer))
-            (scroll-other-window-down dist)))
+            (scroll-other-window-down (- (window-height nm-view-buffer-window) 2))))
       ;; If it isn't visible at all, show the beginning.
       (nm-open))))
 
