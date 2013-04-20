@@ -173,7 +173,7 @@ buffer containing notmuch's output and signal an error."
                                    args2)))
               (notmuch-check-exit-status status2 (cons notmuch-command args2)
                                          (buffer-string) err-file)
-              (delete-dups (split-string (buffer-string) "\n" t))))
+              (split-string (buffer-string) "\n+" t)))
 	(delete-file err-file)))))
 
 (defun nm-do-search (query)
@@ -194,16 +194,15 @@ buffer containing notmuch's output and signal an error."
                        (format "--limit=%d" nm-results-per-screen)
                        "--sort=newest-first"
                        query)))
-        (mapcar
-         (lambda (message-id)
-           (plist-put
-            (car
-             (nm-call-notmuch
-              "search"
-              "--output=summary"
-              (concat "id:" message-id)))
-            :id message-id))
-         messages)))))
+        (mapcar (lambda (message-id)
+                  (let ((tags
+                                        ; --output=summary on a message query includes tags of *all* messages in the thread of
+                                        ; the message, so use --output=tags to get only the tags of the message
+                         (nm-call-notmuch "search" "--output=tags" (concat "id:" message-id))))
+                    (plist-put (plist-put (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id)))
+                                          :id message-id)
+                               :tags tags)))
+                messages)))))
 
 (defun nm-do-count (query)
   (let ((output (if (nm-thread-mode)
@@ -251,7 +250,10 @@ buffer containing notmuch's output and signal an error."
        (propertize nm-separator 'face 'nm-separator-face)
        (propertize
         (nm-truncate-or-pad nm-authors-width
-                            (if authors authors
+                            (if authors
+                                  (if (nm-thread-mode)
+                                      authors
+                                    (car (split-string authors "|")))
                               nm-empty-authors))
         'face 'nm-authors-face)
        (propertize nm-separator 'face 'nm-separator-face)
@@ -567,12 +569,6 @@ buffer containing notmuch's output and signal an error."
   (with-current-buffer nm-view-buffer
     (notmuch-mua-forward-message)))
 
-(defun nm-tag ()
-  "Tag it."
-  (interactive)
-  (nm-apply-to-result 'notmuch-tag)
-  (nm-refresh))
-
 ;;; Times
 ;;; We say an etime is a time as returned by encode-time
 ;;; We say a dtime is a time as returned by decode-time
@@ -853,6 +849,43 @@ buffer containing notmuch's output and signal an error."
 (defun nm-reset ()
   (interactive)
   (setq nm-query nm-default-query)
+  (nm-refresh))
+
+;;; Tags
+
+(defvar nm-read-tags-history nil)
+
+(defun nm-read-tags (&optional initial-input)
+  (let* ((tag-list (notmuch-tag-completions))
+	 (crm-separator " ")
+	 (crm-local-completion-map
+	  (let ((map (make-sparse-keymap)))
+	    (set-keymap-parent map crm-local-completion-map)
+	    (define-key map " " 'self-insert-command)
+	    map)))
+    (delete "" (completing-read-multiple "Tags: " tag-list nil nil initial-input 'nm-read-tags-history))))
+
+(defun nm-tag ()
+  "Tag it."
+  (interactive)
+  (let ((result (nm-result-at-pos)))
+    (when result
+      (let* ((initial-tags (delete-dups (plist-get result :tags)))
+             (initial-input (mapconcat 'identity initial-tags " "))
+             (final-tags (nm-read-tags initial-input))
+             (tag-changes nil))
+        (setq initial-tags (sort initial-tags 'string<))
+        (setq final-tags (sort final-tags 'string<))
+        (while (or initial-tags final-tags)
+          (cond
+           ((and (not initial-tags) final-tags)           (push (concat "+" (pop final-tags))   tag-changes))
+           ((and initial-tags (not final-tags))           (push (concat "-" (pop initial-tags)) tag-changes))
+           ((string< (car final-tags) (car initial-tags)) (push (concat "+" (pop final-tags))   tag-changes))
+           ((string< (car initial-tags) (car final-tags)) (push (concat "-" (pop initial-tags)) tag-changes))
+           (t                                             (progn (pop initial-tags)
+                                                                 (pop final-tags)))))
+        (nm-apply-to-result (lambda (q) 
+                              (notmuch-tag q tag-changes))))))
   (nm-refresh))
 
 ;;; Mode definition
