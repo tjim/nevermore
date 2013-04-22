@@ -6,7 +6,7 @@
 ;;; * Junk filtering
 ;;; * TODO UI for wakeup times
 ;;; * TODO mail address completion
-;;; * TODO more navigation fixes (next-line, beginning-of-buffer)
+;;; * TODO more navigation fixes (recenter C-l)
 ;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
