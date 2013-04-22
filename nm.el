@@ -726,14 +726,48 @@ buffer containing notmuch's output and signal an error."
 
 ;;; Navigation within results
 
-(defun nm-forward-page ()
+(defun nm-next-line ()
+  "Go to the next result."
+  (interactive)
+  (if (eq (line-number-at-pos) (window-body-height))
+      (progn (nm-scroll-up-command) (goto-line 2))
+    (next-line)))
+
+(defun nm-previous-line ()
+  "Go to the previous result."
+  (interactive)
+  (if (and (eq (line-number-at-pos) 1) (not (eq nm-current-offset 0)))
+      (progn (nm-scroll-down-command) (goto-line (1- (window-body-height))))
+    (previous-line)))
+
+(defun nm-beginning-of-buffer ()
+  "Go to the first result."
+  (interactive)
+  (when (not (eq nm-current-offset 0))
+    (setq nm-current-offset 0)
+    (nm-refresh))
+  (goto-line 1))
+
+(defun nm-end-of-buffer ()
+  "Go to the last result."
+  (interactive)
+  (while (not nm-all-results-count)
+    (sit-for 0.2))
+  (if (> nm-all-results-count nm-results-per-screen)
+      (progn
+        (setq nm-current-offset (- nm-all-results-count nm-results-per-screen))
+        (nm-refresh)
+        (goto-line nm-results-per-screen))
+    (goto-line (- nm-all-results-count nm-current-offset))))
+
+(defun nm-scroll-up-command ()
   (interactive)
   (let ((new-offset (+ nm-current-offset nm-results-per-screen -1)))
     (when (or (not nm-all-results-count) (< new-offset nm-all-results-count)) ; at least one result will be in range
       (setq nm-current-offset new-offset)
       (nm-refresh))))
 
-(defun nm-backward-page ()
+(defun nm-scroll-down-command ()
   (interactive)
   (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen -1))))
       (setq nm-current-offset new-offset)
@@ -896,8 +930,12 @@ buffer containing notmuch's output and signal an error."
     (define-key map (kbd "RET") 'nm-open)
     (define-key map " " 'nm-scroll-msg-up)
     (define-key map (kbd "DEL") 'nm-scroll-msg-down)
-    (define-key map [remap scroll-up-command] 'nm-forward-page)
-    (define-key map [remap scroll-down-command] 'nm-backward-page)
+    (define-key map [remap scroll-up-command] 'nm-scroll-up-command)
+    (define-key map [remap scroll-down-command] 'nm-scroll-down-command)
+    (define-key map [remap next-line] 'nm-next-line)
+    (define-key map [remap previous-line] 'nm-previous-line)
+    (define-key map [remap end-of-buffer] 'nm-end-of-buffer)
+    (define-key map [remap beginning-of-buffer] 'nm-beginning-of-buffer)
     (define-key map "\C-c\C-g" 'nm-reset)
     (define-key map "\C-c\C-l" 'nm-refresh)
     (define-key map "\C-c\C-m" 'nm-toggle-query-mode)
