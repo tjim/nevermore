@@ -945,6 +945,8 @@ buffer containing notmuch's output and signal an error."
     (define-key map "f" 'nm-forward)
     (define-key map "J" 'nm-junk)
     (define-key map "m" 'notmuch-mua-new-mail)
+    (define-key map "n" 'nm-next-line)
+    (define-key map "p" 'nm-previous-line)
     (define-key map "r" 'nm-reply)
     (define-key map "R" 'nm-reply-all)
     (define-key map "s" 'nm-snooze)
