@@ -4,9 +4,10 @@
 ;;; * Incremental search by message or thread
 ;;; * Snooze
 ;;; * Junk filtering
-;;; * TODO UI for wakeup times
 ;;; * TODO mail address completion
 ;;; * TODO more navigation fixes (recenter C-l)
+;;; * TODO mail defer queue
+;;; * TODO UI for wakeup times
 ;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
@@ -880,6 +881,26 @@ buffer containing notmuch's output and signal an error."
                             (notmuch-tag q '("-junk" "-deleted"))))
                         (nm-refresh))))
 
+(defun nm-bulk-junk ()
+  "Mark *****SPAM***** as junk."
+  (interactive)
+  (let ((messages (remove-if (lambda (message-id)
+                               (let* ((summary (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id))))
+                                      (subject (plist-get summary :subject)))
+                                 (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
+                             (nm-call-notmuch
+                              "search"
+;                              "--limit=2000"
+                              "--output=messages"
+                              "subject:SPAM not tag:junk"))))
+    (message "Marking %d messages as junk" (length messages))
+    (mapc (lambda (message-id)
+            (let ((q (concat "id:" message-id)))
+              (nm-bogo-junk q)
+              (notmuch-tag q '("+junk" "+deleted" "-unread" "-inbox"))))
+          messages)
+    (message "")))
+
 (defun nm-reset ()
   (interactive)
   (setq nm-query nm-default-query)
@@ -1098,3 +1119,4 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 
 
 (provide 'nm)
+
