@@ -151,7 +151,7 @@
           (vector (plist-get arr :vector)))
       (if (and (<= 0 index) (< index len))
           (aref vector index)
-        (error "nm-dynarray-get: out of bounds")))))
+        (error "nm-dynarray-get: out of bounds (length %d, index %d)" len index)))))
 
 (defun nm-dynarray-set (arr index obj)
   (when arr
@@ -456,6 +456,7 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-result-index-at-pos ()
   (and nm-results
+       (> (nm-dynarray-length nm-results) 0)
        (- (line-number-at-pos) 1)))
 
 (defun nm-result-at-pos ()
@@ -568,6 +569,24 @@ buffer containing notmuch's output and signal an error."
                  (concat "thread:" (plist-get result :thread))
                (concat "id:" (plist-get result :id)))))
       (funcall fn query)))))
+
+(defun nm-focus-thread ()
+  "Show the thread of the current message (in message mode) or just this thread (in thread mode)"
+  (interactive)
+  (if (nm-thread-mode)
+      (nm-apply-to-result (lambda (q)
+                            (setq nm-query q)
+                            (nm-refresh)))
+    (nm-apply-to-result (lambda (q)
+                          (let ((result (nm-call-notmuch "search" "--output=summary" q)))
+                            (when result
+                              (let ((thread-id (plist-get (car result) :thread)))
+                                (when thread-id
+                                  (message "A")
+                                  (setq nm-query (concat "thread:" thread-id))
+                                  (message "B")
+                                  (nm-refresh)
+                                  (message "C")))))))))
 
 (defun nm-open ()
   "Open it."
@@ -949,10 +968,11 @@ buffer containing notmuch's output and signal an error."
     (define-key map "m" 'notmuch-mua-new-mail)
     (define-key map "n" 'next-line)
     (define-key map "p" 'previous-line)
+    (define-key map "q" 'nm-bury)
     (define-key map "r" 'nm-reply)
     (define-key map "R" 'nm-reply-all)
     (define-key map "s" 'nm-snooze)
-    (define-key map "q" 'nm-bury)
+    (define-key map "T" 'nm-focus-thread)
     (define-key map "t" 'nm-tag)
     (define-key map "W" 'nm-wakeup)
     map)
