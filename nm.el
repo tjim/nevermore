@@ -310,32 +310,6 @@ buffer containing notmuch's output and signal an error."
   (nm-highlight-result)
   (nm-view-buffer-update))
 
-;; work in progress on async search
-(defun nm-async-search-message (obj)
-                                        ; sad-face b/c I have to fork on every message result
-  (let* ((msg (car (nm-flatten-forest (nm-call-notmuch "show" "--entire-thread=false" "--body=false" (concat "id:" obj)))))
-         (result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
-                            :authors ,(plist-get (plist-get msg :headers) :From)
-                            :date_relative ,(plist-get msg :date_relative)
-                            :tags ,(plist-get msg :tags)
-                            :id ,(plist-get msg :id))))
-    (with-current-buffer nm-results-buffer
-      (save-excursion
-        (goto-char (point-max))
-        (let ((inhibit-read-only t))
-          (insert (nm-result-line result) "\n"))
-        (setq nm-results (nm-dynarray-append nm-results result))))))
-(defun nm-async-search-new-result (result)
-  (when (and result (get-buffer nm-results-buffer))
-    (if (nm-thread-mode)
-         (with-current-buffer nm-results-buffer
-          (save-excursion
-            (goto-char (point-max))
-            (let ((inhibit-read-only t))
-              (insert (nm-result-line result) "\n"))
-            (setq nm-results (nm-dynarray-append nm-results result))))
-    (nm-async-search-message result))))
-
 (defvar nm-async-search-pending-proc nil)   ; the process of a search underway
 (defvar nm-async-search-pending-output nil) ; holds the not-yet-processed part of the output of the search process
 (defun nm-async-search ()
@@ -347,21 +321,27 @@ buffer containing notmuch's output and signal an error."
   (setq nm-async-search-pending-output nil) ; indicate that we have not gotten any output yet
   (setq nm-results (nm-dynarray-create))
   (setq nm-async-search-pending-proc
-        (notmuch-start-notmuch
-         "nm-async-search" ; process name
-         nil               ; process buffer
-         nil               ; process sentinel
-         "search"          ; notmuch command
-         "--format=sexp"
-         "--format-version=2"
-         (if (nm-thread-mode)
+        (if (nm-thread-mode)
+            (notmuch-start-notmuch
+             "nm-async-search" ; process name
+             nil               ; process buffer
+             nil               ; process sentinel
+             "search"          ; notmuch command
+             "--format=sexp"
+             "--format-version=2"
              "--output=summary"
-           "--output=messages") ; message ids only, unfortunately
-         (if (nm-thread-mode)
-             "--limit=-1"
-           "--limit=500")
-         "--sort=newest-first"
-         nm-query))
+             "--sort=newest-first"
+             nm-query)
+          (notmuch-start-notmuch
+           "nm-async-search" ; process name
+           nil               ; process buffer
+           nil               ; process sentinel
+           "show"            ; notmuch command
+           "--format=sexp"
+           "--format-version=2"
+           "--body=false"
+           "--entire-thread=false"
+           nm-query)))
   (set-process-filter
    nm-async-search-pending-proc
    (lambda (proc string)
@@ -382,6 +362,35 @@ buffer containing notmuch's output and signal an error."
                       t))))))))
   ; return value
   nil)
+(defun nm-async-search-new-result (result)
+  (when (and result (get-buffer nm-results-buffer))
+    (if (nm-thread-mode)
+         (with-current-buffer nm-results-buffer
+          (save-excursion
+            (goto-char (point-max))
+            (let ((inhibit-read-only t))
+              (insert (nm-result-line result) "\n"))
+            (setq nm-results (nm-dynarray-append nm-results result))))
+    (nm-async-search-message result))))
+(defun nm-async-search-message (obj)
+  (let* ((msgs (nm-flatten-forest (list obj)))
+         (results (mapcar
+                   (lambda (msg)
+                     `(:subject ,(plist-get (plist-get msg :headers) :Subject)
+                                :authors ,(plist-get (plist-get msg :headers) :From)
+                                :date_relative ,(plist-get msg :date_relative)
+                                :tags ,(plist-get msg :tags)
+                                :id ,(plist-get msg :id)))
+                   msgs)))
+    (with-current-buffer nm-results-buffer
+      (save-excursion
+        (goto-char (point-max))
+        (let ((inhibit-read-only t))
+          (mapc
+           (lambda (result)
+             (insert (nm-result-line result) "\n")
+             (setq nm-results (nm-dynarray-append nm-results result)))
+           results))))))
 
 (defun nm-bury ()
   "Bury the current nevermore buffers."
