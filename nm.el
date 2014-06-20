@@ -68,6 +68,32 @@
   "Face for Nm tags."
   :group 'nm-faces)
 
+(defvar nm-results-window-size 8
+  "Number of lines of search results to show when viewing both results and a thread or message")
+
+(defvar nm-separator " | "
+  "Text used to separate fields.")
+
+(defvar nm-empty-subject "[No subject]"
+  "Text to use as subject when missing.")
+
+(defvar nm-empty-authors "[No authors]"
+  "Text to use as authors when missing.")
+
+(defvar nm-empty-date "[No date]"
+  "Text to use as date when missing.")
+
+(defvar nm-default-query "tag:inbox ")
+
+(defvar nm-date-width 12
+  "Width of dates in Nm buffer.")
+
+(defvar nm-authors-width 20
+  "Width of authors in Nm buffer.")
+
+(defvar nm-mode-hook nil
+  "Hook run when entering Nm mode.")
+
 ;; Constants
 
 (defconst nm-version "1.0")
@@ -78,54 +104,62 @@
 (defconst nm-view-buffer "*nm-view*"
   "Nm view buffer name.")
 
-(defconst nm-separator " | "
-  "Text used to separate fields.")
-
-(defconst nm-empty-subject "[No subject]"
-  "Text to use as subject when missing.")
-
-(defconst nm-empty-authors "[No authors]"
-  "Text to use as authors when missing.")
-
-(defconst nm-empty-date "[Unknown date]"
-  "Text to use as date when missing.")
-
-(defconst nm-default-query "tag:inbox ")
-
-;; Global variables
-
-(defvar nm-mode-hook nil
-  "Hook run when entering Nm mode.")
+;; State variables
 
 (defvar nm-query nm-default-query
   "The current query whose results are in the nm-results-buffer.")
 
+(defvar nm-results nil
+  "Dynamic array of query results for nm-query, in sexp form.")
+
 (defvar nm-view-buffer-contents-query nil
   "The current query whose contents are in the nm-view-buffer.")
-
-(defvar nm-results nil
-  "List of a screen's worth of results for the current query.")
 
 (defvar nm-all-results-count nil
   "Count of all results for the current query.")
 
-(defvar nm-current-offset 0)
-
-(defvar nm-query-mode 'message) ; or 'thread
-
-(defvar nm-window-height nil
-  "Height of Nm buffer.")
-
-(defvar nm-results-per-screen nil
-  "Number of results that can fit on one screen.")
-
-(defvar nm-date-width 12
-  "Width of dates in Nm buffer.")
-
-(defvar nm-authors-width 20
-  "Width of authors in Nm buffer.")
+;(defvar nm-query-mode 'message) ; or 'thread
+(defvar nm-query-mode 'thread)
 
 ;; Helpers
+
+(defun nm-dynarray-create ()
+  (plist-put
+   (plist-put '() :length 0)
+   :vector (make-vector 11 nil)))
+
+(defun nm-dynarray-length (arr)
+  (when arr
+    (plist-get arr :length)))
+
+(defun nm-dynarray-append (arr obj)
+  (when arr
+    (let ((len (plist-get arr :length))
+          (vector (plist-get arr :vector)))
+      (if (< len (length vector))
+                                        ; there is room in the array
+          (progn
+            (aset vector len obj)
+            (plist-put arr :length (1+ len)))
+                                        ; there is no room in the array, double it and try again
+        (let ((vector2 (vconcat vector (make-vector len nil))))
+          (nm-dynarray-append (plist-put arr :vector vector2) obj))))))
+
+(defun nm-dynarray-get (arr index)
+  (when arr
+    (let ((len (plist-get arr :length))
+          (vector (plist-get arr :vector)))
+      (if (and (<= 0 index) (< index len))
+          (aref vector index)
+        (error "nm-dynarray-get: out of bounds")))))
+
+(defun nm-dynarray-set (arr index obj)
+  (when arr
+    (let ((len (plist-get arr :length))
+          (vector (plist-get arr :vector)))
+      (if (and (<= 0 index) (< index len))
+          (aset vector index obj)
+        (error "nm-dynarray-set: out of bounds")))))
 
 (defun nm-thread-mode ()
   (equal nm-query-mode 'thread))
@@ -177,46 +211,6 @@ buffer containing notmuch's output and signal an error."
               (split-string (buffer-string) "\n+" t)))
 	(delete-file err-file)))))
 
-(defun nm-do-search (query)
-  (if (nm-thread-mode)
-      (ignore-errors
-        (nm-call-notmuch
-         "search"
-         "--output=summary"
-         (format "--offset=%d" nm-current-offset)
-         (format "--limit=%d" nm-results-per-screen)
-         "--sort=newest-first"
-         query))
-    (ignore-errors
-      (let ((messages (nm-call-notmuch
-                       "search"
-                       "--output=messages"
-                       (format "--offset=%d" nm-current-offset)
-                       (format "--limit=%d" nm-results-per-screen)
-                       "--sort=newest-first"
-                       query)))
-        (mapcar (lambda (message-id)
-                  (let ((tags
-                                        ; --output=summary on a message query includes tags of *all* messages in the thread of
-                                        ; the message, so use --output=tags to get only the tags of the message
-                         (nm-call-notmuch "search" "--output=tags" (concat "id:" message-id))))
-                    (plist-put (plist-put (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id)))
-                                          :id message-id)
-                               :tags tags)))
-                messages)))))
-
-(defun nm-do-count (query)
-  (let ((output (if (nm-thread-mode)
-                    "--output=threads"
-                  "--output=messages")))
-  (or 
-   (ignore-errors
-     (nm-call-notmuch
-      "count"
-      output
-      query))
-   0)))
-
 (defun nm-chomp (str)
   "Trim leading and trailing whitespace from STR."
   (replace-regexp-in-string "\\(^[[:space:]\n]*\\|[[:space:]\n]*$\\)" "" str))
@@ -232,11 +226,13 @@ buffer containing notmuch's output and signal an error."
 
 ;; Display
 
-(defun nm-goto-first-result-pos ()
-  (goto-char (point-min)))
+(defvar nm-problem-before nil)
 
 (defun nm-result-line (result)
   "Return a line of text for a RESULT."
+  (when (and result (not nm-problem-before) (not (plist-get result :date_relative)))
+    (setq nm-problem-before t)
+    (message "Problem: %S" result))
   (when result
     (let* ((date (plist-get result :date_relative))
            (authors (plist-get result :authors))
@@ -314,119 +310,140 @@ buffer containing notmuch's output and signal an error."
   (nm-highlight-result)
   (nm-view-buffer-update))
 
-(defun nm-update-buffer (old new)
-  (save-excursion
-    (save-window-excursion
-      (let ((inhibit-read-only t))
-        (nm-goto-first-result-pos)
-        (nm-update-lines old new)))))
+;; work in progress on async search
+(defun nm-async-search-message (obj)
+                                        ; sad-face b/c I have to fork on every message result
+  (let* ((msg (car (nm-flatten-forest (nm-call-notmuch "show" "--entire-thread=false" "--body=false" (concat "id:" obj)))))
+         (result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
+                            :authors ,(plist-get (plist-get msg :headers) :From)
+                            :date_relative ,(plist-get msg :date_relative)
+                            :tags ,(plist-get msg :tags)
+                            :id ,(plist-get msg :id))))
+    (with-current-buffer nm-results-buffer
+      (save-excursion
+        (goto-char (point-max))
+        (let ((inhibit-read-only t))
+          (insert (nm-result-line result) "\n"))
+        (setq nm-results (nm-dynarray-append nm-results result))))))
+(defun nm-async-search-new-result (result)
+  (when (and result (get-buffer nm-results-buffer))
+    (if (nm-thread-mode)
+         (with-current-buffer nm-results-buffer
+          (save-excursion
+            (goto-char (point-max))
+            (let ((inhibit-read-only t))
+              (insert (nm-result-line result) "\n"))
+            (setq nm-results (nm-dynarray-append nm-results result))))
+    (nm-async-search-message result))))
 
-(defun nm-result-equal (a b)
-  (and (equal (plist-get a :thread) (plist-get b :thread))
-       (equal (plist-get a :date_relative) (plist-get b :date_relative))
-       (equal (plist-get a :tags) (plist-get b :tags))))
+(defvar nm-async-search-pending-proc nil)   ; the process of a search underway
+(defvar nm-async-search-pending-output nil) ; holds the not-yet-processed part of the output of the search process
+(defun nm-async-search ()
+  ; perform an asynchronous search on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results
+  (when nm-async-search-pending-proc
+      (ignore-errors (kill-process nm-async-search-pending-proc))
+      ; kill-process sends signal, actual process death is asynchronous, so indicate that we want the process dead
+      (setq nm-async-search-pending-proc nil))
+  (setq nm-async-search-pending-output nil) ; indicate that we have not gotten any output yet
+  (setq nm-results (nm-dynarray-create))
+  (setq nm-async-search-pending-proc
+        (notmuch-start-notmuch
+         "nm-async-search" ; process name
+         nil               ; process buffer
+         nil               ; process sentinel
+         "search"          ; notmuch command
+         "--format=sexp"
+         "--format-version=2"
+         (if (nm-thread-mode)
+             "--output=summary"
+           "--output=messages") ; message ids only, unfortunately
+         (if (nm-thread-mode)
+             "--limit=-1"
+           "--limit=500")
+         "--sort=newest-first"
+         nm-query))
+  (set-process-filter
+   nm-async-search-pending-proc
+   (lambda (proc string)
+     (when (and nm-async-search-pending-proc (equal (process-id proc) (process-id nm-async-search-pending-proc)))
+       (if nm-async-search-pending-output
+                                        ; This is not the first time we have seen output, add it to anything remaining from last time
+           (setq nm-async-search-pending-output (concat nm-async-search-pending-output string))
+                                        ; This is the first time we have seen output.  Skip the initial open paren
+         (setq nm-async-search-pending-output (substring string 1)))
+       (while
+           (let ((result (ignore-errors (read-from-string nm-async-search-pending-output))))
+             (and result
+                  (progn
+                    (let ((obj (car result))
+                          (offset (cdr result)))
+                      (setq nm-async-search-pending-output (substring nm-async-search-pending-output offset))
+                      (nm-async-search-new-result obj)
+                      t))))))))
+  ; return value
+  nil)
 
-(defun nm-forward-result ()
+(defun nm-bury ()
+  "Bury the current nevermore buffers."
   (interactive)
-  (when (not (nm-at-final-result-pos))
-    (forward-line 1)))
+  (let ((b (get-buffer nm-view-buffer)))
+    (nm-log "quitting %S" b)
+    (when b (replace-buffer-in-windows b)))
+  (let ((b (get-buffer nm-results-buffer)))
+    (nm-log "quitting %S" b)
+    (when b (replace-buffer-in-windows b))))
 
-(defun nm-update-lines (old new)
-                                        ; invariant: if old then we are at the beginning of the line for (car old)
-  (cond
-   ((and (not old) (not new))
-    '())
-   ((not old)
-    (mapc 'nm-insert-result new))
-   ((not new)
-    (delete-region (point) (point-max)))
-   ((nm-result-equal (car old) (car new))
-    (progn
-      (nm-forward-result)
-      (nm-update-lines (cdr old) (cdr new))))
-   (t
-    (progn
-      (delete-region (point) (line-end-position))
-      (insert (nm-result-line (car new)))
-      (forward-line)
-;;      (nm-forward-result)
-      (nm-update-lines (cdr old) (cdr new))))))
+(defun nm-log (x &rest args)
+  (let ((buffer (get-buffer-create "*nm-log*")))
+    (with-current-buffer buffer
+      (insert (apply 'format x args))
+      (insert "\n"))))
 
 ;; maintain count
-(defvar nm-async-count-pending-query nil)
+(defun nm-setq-mode-name (s)
+  (when (get-buffer nm-results-buffer)
+    (with-current-buffer nm-results-buffer
+      (setq mode-name s)
+      (force-mode-line-update))))
 (defvar nm-async-count-pending-proc nil)
 (defun nm-async-count ()
-  (interactive)
-  (if nm-async-count-pending-proc
-      (ignore-errors (kill-process nm-async-count-pending-proc)))
-  (let ((output (if (nm-thread-mode)
-                    "--output=threads"
-                  "--output=messages")))
-    (setq nm-all-results-count nil)
-    (setq nm-async-count-pending-query nm-query)
-    (setq nm-async-count-pending-proc
-          (start-process "nm-async-count" "*nm-async-count*" notmuch-command "count" output nm-query))
-    (set-process-filter nm-async-count-pending-proc 
-                        (lambda (proc string)
-                          (when (equal nm-query nm-async-count-pending-query)
-                            (setq nm-all-results-count (string-to-number (nm-chomp string)))
-                            (setq nm-async-count-pending-query nil)
-                            (setq nm-async-count-pending-proc nil)
-                            (nm-refresh-count-display))))))
-(defun nm-setq-mode-name (s)
-  (with-current-buffer nm-results-buffer
-    (setq mode-name s)
-    (force-mode-line-update)))
-(defun nm-refresh-count-display ()
-  (let* ((first-result (1+ nm-current-offset))
-         (len (length nm-results))
-         (last-result (+ nm-current-offset len)))
-    (when (and (not nm-all-results-count) (not (eq len nm-results-per-screen)))
-      (setq nm-all-results-count last-result))
-    (if nm-all-results-count
-        (let ((results (cond ((eq nm-all-results-count 1) "1 result")
-                             ((eq nm-all-results-count 0) "no results")
-                             (t (format "%d results" nm-all-results-count)))))
-          (if (< nm-all-results-count nm-results-per-screen)
-              (nm-setq-mode-name (format "nevermore: %s" results))
-            (nm-setq-mode-name (format "nevermore: %d-%d of %s" first-result last-result results))))
-      (nm-setq-mode-name (format "nevermore: %d-%d" first-result last-result)))))
-
-(defun nm-resize ()
-  "Call this function if the size of the window changes."
-  (interactive)
-  (when (get-buffer nm-results-buffer)
-    (with-current-buffer nm-results-buffer
-      (let* ((new-window-height (window-body-height))
-             (getting-shorter (and nm-window-height (< new-window-height nm-window-height)))
-             (current-line (line-number-at-pos))
-             (must-change-offset (and getting-shorter (> current-line new-window-height))))
-        (setq nm-window-height new-window-height)
-        (setq nm-results-per-screen nm-window-height)
-        (when must-change-offset
-          (setq nm-current-offset (+ nm-current-offset current-line -1))) ; old result will be at top
-        (let ((inhibit-read-only t))
-          (erase-buffer))
-        (setq nm-results nil)
-        (nm-refresh)
-        (when (not (> current-line new-window-height))
-          (goto-char (point-min))
-          (forward-line (1- current-line)))))))
+  (when nm-async-count-pending-proc
+    (ignore-errors (kill-process nm-async-count-pending-proc))
+    (setq nm-async-count-pending-proc nil))
+  (nm-setq-mode-name "nevermore")
+  (setq nm-all-results-count nil)
+  (setq nm-async-count-pending-proc
+        (notmuch-start-notmuch
+         "nm-async-count" ; process name
+         nil              ; process buffer
+         nil              ; process sentinel
+         "count"          ; notmuch command
+         (if (nm-thread-mode)
+             "--output=threads"
+           "--output=messages")
+         nm-query))
+  (set-process-filter nm-async-count-pending-proc
+                      (lambda (proc string)
+                        (when (and nm-async-count-pending-proc (equal (process-id proc) (process-id nm-async-count-pending-proc)))
+                          (setq nm-async-count-pending-proc nil)
+                          (setq nm-all-results-count (string-to-number (nm-chomp string)))
+                          (if nm-all-results-count
+                              (let ((results (cond ((eq nm-all-results-count 1) "1 result")
+                                                   ((eq nm-all-results-count 0) "no results")
+                                                   (t (format "%d results" nm-all-results-count)))))
+                                (nm-setq-mode-name (format "nevermore: %s" results)))
+                            (nm-setq-mode-name "nevermore"))))))
 
 (defun nm-refresh ()
-  "Reapply the query and refresh the *nm* buffer."
+  "(Re)apply the query and refresh the *nm* buffer."
   (interactive)
   (when (get-buffer nm-results-buffer)
     (with-current-buffer nm-results-buffer
-      (nm-async-count)
+      (let ((inhibit-read-only t))
+        (erase-buffer))
       (nm-draw-header)
-      (let ((old nm-results))
-        (setq nm-results (nm-do-search nm-query))
-        (nm-refresh-count-display)
-        (nm-update-buffer old nm-results)))))
-
-(defun nm-at-final-result-pos ()
-  (eq (1+ (nm-result-index-at-pos)) nm-results-per-screen))
+      (nm-async-count)
+      (nm-async-search))))
 
 (defun nm-result-index-at-pos ()
   (and nm-results
@@ -435,11 +452,11 @@ buffer containing notmuch's output and signal an error."
 (defun nm-result-at-pos ()
   (let ((index (nm-result-index-at-pos)))
     (when index
-      (nth index nm-results))))
+      (nm-dynarray-get nm-results index))))
 
 (defun nm-flatten-forest (forest)
 ;;  (display-message-or-buffer (format "Before: %S" forest))
-  (let ((result 
+  (let ((result
          (apply 'append
                 (mapcar 'nm-flatten-thread forest))))
 ;;    (display-message-or-buffer (format "After: %S" result))
@@ -480,7 +497,7 @@ buffer containing notmuch's output and signal an error."
                                      (mapc (lambda (f) (insert f "\0"))
                                            files))
                                    (with-temp-buffer
-                                     (call-process-shell-command "xargs -0 grep -h -m 1 -b '^$'" files-file t)
+                                     (call-process-shell-command "xargs -0 -n 1 grep -h -m 1 -b '^$'" files-file t)
                                      (insert ")")
                                      (goto-char (point-min))
                                      (insert "(")
@@ -531,7 +548,8 @@ buffer containing notmuch's output and signal an error."
         (jit-lock-register #'notmuch-show-buttonise-links)
         (run-hooks 'notmuch-show-hook)
         (notmuch-show-goto-first-wanted-message)))
-    (when (not nodisplay) (display-buffer buffer))))
+    (when (not nodisplay)
+      (display-buffer-below-selected buffer `((window-height . ,(- (window-height) nm-results-window-size 2)))))))
 
 (defun nm-apply-to-result (fn)
   (let ((result (nm-result-at-pos)))
@@ -711,7 +729,6 @@ buffer containing notmuch's output and signal an error."
     (when (and (not (equal (nm-chomp s) (nm-chomp nm-query)))
                (sit-for nm-update-delay))
       (setq nm-query s)
-      (setq nm-current-offset 0)
       (nm-refresh))))
 
 (defvar nm-query-history (list nm-default-query))
@@ -724,55 +741,6 @@ buffer containing notmuch's output and signal an error."
         (add-hook 'post-command-hook 'nm-minibuffer-refresh)
         (read-string "Query: " nm-query 'nm-query-history))
     (remove-hook 'post-command-hook 'nm-minibuffer-refresh)))
-
-;;; Navigation within results
-
-(defun nm-next-line ()
-  "Go to the next result."
-  (interactive)
-  (if (eq (line-number-at-pos) (window-body-height))
-      (progn (nm-scroll-up-command) (goto-line 2))
-    (next-line)))
-
-(defun nm-previous-line ()
-  "Go to the previous result."
-  (interactive)
-  (if (and (eq (line-number-at-pos) 1) (not (eq nm-current-offset 0)))
-      (progn (nm-scroll-down-command) (goto-line (1- (window-body-height))))
-    (previous-line)))
-
-(defun nm-beginning-of-buffer ()
-  "Go to the first result."
-  (interactive)
-  (when (not (eq nm-current-offset 0))
-    (setq nm-current-offset 0)
-    (nm-refresh))
-  (goto-line 1))
-
-(defun nm-end-of-buffer ()
-  "Go to the last result."
-  (interactive)
-  (while (not nm-all-results-count)
-    (sit-for 0.2))
-  (if (> nm-all-results-count nm-results-per-screen)
-      (progn
-        (setq nm-current-offset (- nm-all-results-count nm-results-per-screen))
-        (nm-refresh)
-        (goto-line nm-results-per-screen))
-    (goto-line (- nm-all-results-count nm-current-offset))))
-
-(defun nm-scroll-up-command ()
-  (interactive)
-  (let ((new-offset (+ nm-current-offset nm-results-per-screen -1)))
-    (when (or (not nm-all-results-count) (< new-offset nm-all-results-count)) ; at least one result will be in range
-      (setq nm-current-offset new-offset)
-      (nm-refresh))))
-
-(defun nm-scroll-down-command ()
-  (interactive)
-  (let ((new-offset (max 0 (- nm-current-offset nm-results-per-screen -1))))
-      (setq nm-current-offset new-offset)
-      (nm-refresh)))
 
 ;;; Navigating within in a result
 
@@ -828,7 +796,7 @@ buffer containing notmuch's output and signal an error."
   (let ((result (nm-result-at-pos)))
     (when result
       (let* ((thread-id (concat "thread:" (plist-get result :thread)))
-             (messages 
+             (messages
               (mapcar 'nm-get-message
                       (nm-call-notmuch
                        "search"
@@ -901,8 +869,17 @@ buffer containing notmuch's output and signal an error."
           messages)
     (message "")))
 
+(defun nm-interrupt ()
+  (when nm-async-search-pending-proc
+      (ignore-errors (kill-process nm-async-search-pending-proc))
+      (setq nm-async-search-pending-proc nil))
+  (when nm-async-count-pending-proc
+    (ignore-errors (kill-process nm-async-count-pending-proc))
+    (setq nm-async-count-pending-proc nil)))
+
 (defun nm-reset ()
   (interactive)
+  (nm-interrupt)
   (setq nm-query nm-default-query)
   (nm-refresh))
 
@@ -939,7 +916,7 @@ buffer containing notmuch's output and signal an error."
            ((string< (car initial-tags) (car final-tags)) (push (concat "-" (pop initial-tags)) tag-changes))
            (t                                             (progn (pop initial-tags)
                                                                  (pop final-tags)))))
-        (nm-apply-to-result (lambda (q) 
+        (nm-apply-to-result (lambda (q)
                               (notmuch-tag q tag-changes))))))
   (nm-refresh))
 
@@ -951,12 +928,7 @@ buffer containing notmuch's output and signal an error."
     (define-key map (kbd "RET") 'nm-open)
     (define-key map " " 'nm-scroll-msg-up)
     (define-key map (kbd "DEL") 'nm-scroll-msg-down)
-    (define-key map [remap scroll-up-command] 'nm-scroll-up-command)
-    (define-key map [remap scroll-down-command] 'nm-scroll-down-command)
-    (define-key map [remap next-line] 'nm-next-line)
-    (define-key map [remap previous-line] 'nm-previous-line)
-    (define-key map [remap end-of-buffer] 'nm-end-of-buffer)
-    (define-key map [remap beginning-of-buffer] 'nm-beginning-of-buffer)
+    (define-key map "\C-c\C-c" 'nm-interrupt)
     (define-key map "\C-c\C-g" 'nm-reset)
     (define-key map "\C-c\C-l" 'nm-refresh)
     (define-key map "\C-c\C-m" 'nm-toggle-query-mode)
@@ -966,12 +938,12 @@ buffer containing notmuch's output and signal an error."
     (define-key map "f" 'nm-forward)
     (define-key map "J" 'nm-junk)
     (define-key map "m" 'notmuch-mua-new-mail)
-    (define-key map "n" 'nm-next-line)
-    (define-key map "p" 'nm-previous-line)
+    (define-key map "n" 'next-line)
+    (define-key map "p" 'previous-line)
     (define-key map "r" 'nm-reply)
     (define-key map "R" 'nm-reply-all)
     (define-key map "s" 'nm-snooze)
-    (define-key map "q" 'quit-window)
+    (define-key map "q" 'nm-bury)
     (define-key map "t" 'nm-tag)
     (define-key map "W" 'nm-wakeup)
     map)
@@ -993,20 +965,14 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (let ((inhibit-read-only t))
     (erase-buffer))
   (nm-draw-header)
-  (setq nm-results nil)
+  (setq nm-results (nm-dynarray-create))
   (setq nm-all-results-count nil)
-  (setq nm-current-offset 0)
-  (nm-resize)
-  (nm-wakeup)
-  (nm-goto-first-result-pos)
+;  (nm-wakeup)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'post-command-hook 'nm-results-post-command nil t)
-  (add-hook 'window-configuration-change-hook
-            (lambda ()
-              (when (and (eq (current-buffer) (get-buffer nm-results-buffer))
-                         (not (eq nm-window-height (window-body-height))))
-                (nm-resize)))))
+  (nm-refresh)
+)
 
 ;;;###autoload
 (defun nm ()
@@ -1117,6 +1083,4 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
 
     (setq lines (nreverse new))))
 
-
 (provide 'nm)
-
