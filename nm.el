@@ -371,7 +371,7 @@ buffer containing notmuch's output and signal an error."
             (let ((inhibit-read-only t))
               (insert (nm-result-line result) "\n"))
             (setq nm-results (nm-dynarray-append nm-results result))))
-    (nm-async-search-message result))))
+      (nm-async-search-message result))))
 (defun nm-async-search-message (obj)
   (let* ((msgs (nm-flatten-forest (list obj)))
          (results (mapcar
@@ -569,6 +569,44 @@ buffer containing notmuch's output and signal an error."
                  (concat "thread:" (plist-get result :thread))
                (concat "id:" (plist-get result :id)))))
       (funcall fn query)))))
+
+(defun nm-refresh-result ()
+  (let ((result (nm-result-at-pos)))
+    (when result
+      (save-excursion
+        (let ((init-point (point))
+              (end (line-end-position))
+              (inhibit-read-only t))
+          (beginning-of-line)
+          (delete-region (point) (line-end-position))
+          (insert (nm-result-line result)))))))
+
+(defun nm-update-tags ()
+  ; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
+  ; So we want to combine q below with nm-query to detect this case.
+  (if (nm-thread-mode)
+      (nm-apply-to-result (lambda (q)
+                            (let ((old-result (nm-result-at-pos))
+                                  (now-result (nm-call-notmuch "search" "--output=summary" q)))
+                              (if (and old-result now-result)
+                                (let ((old-tags (plist-get old-result :tags))
+                                      (now-tags (plist-get (car now-result) :tags)))
+                                  (unless (equal old-tags now-tags)
+                                    (let ((index (nm-result-index-at-pos)))
+                                      (when index
+                                        (nm-dynarray-set nm-results index (car now-result))))
+                                    (nm-refresh-result)))))))
+    (nm-apply-to-result (lambda (q)
+                          (let ((old-result (nm-result-at-pos))
+                                (now-result (nm-call-notmuch "show" "--body=false" "--entire-thread=false" q)))
+                            (if (and old-result now-result)
+                                (let ((old-tags (plist-get old-result :tags))
+                                      (now-tags (plist-get (car now-result) :tags)))
+                                  (unless (equal old-tags now-tags)
+                                    (let ((index (nm-result-index-at-pos)))
+                                      (when index
+                                        (nm-dynarray-set nm-results index (car now-result))))
+                                    (nm-refresh-result)))))))))
 
 (defun nm-focus-thread ()
   "Show the thread of the current message (in message mode) or just this thread (in thread mode)"
@@ -819,20 +857,6 @@ buffer containing notmuch's output and signal an error."
   (nm-call-notmuch
    "show"
    (concat "id:" message-id)))
-(defun nm-flat-thread ()
-  (interactive)
-  (let ((result (nm-result-at-pos)))
-    (when result
-      (let* ((thread-id (concat "thread:" (plist-get result :thread)))
-             (messages
-              (mapcar 'nm-get-message
-                      (nm-call-notmuch
-                       "search"
-                       "--output=messages"
-                       "--sort=oldest-first"
-                       thread-id))))
-        (switch-to-buffer "FOO")
-        (mapc (lambda (m) (insert (format "%S\n" m))) messages)))))
 
 ;;; Replies
 
@@ -946,7 +970,7 @@ buffer containing notmuch's output and signal an error."
                                                                  (pop final-tags)))))
         (nm-apply-to-result (lambda (q)
                               (notmuch-tag q tag-changes))))))
-  (nm-refresh))
+  (nm-update-tags))
 
 ;;; Mode definition
 
