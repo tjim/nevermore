@@ -236,7 +236,7 @@ buffer containing notmuch's output and signal an error."
   (when result
     (let* ((date (plist-get result :date_relative))
            (authors (plist-get result :authors))
-           (subject (plist-get result :subject))
+           (subject (notmuch-sanitize (plist-get result :subject)))
            (tags (plist-get result :tags)))
       (concat
        (propertize
@@ -906,7 +906,7 @@ buffer containing notmuch's output and signal an error."
   (interactive)
   (let ((messages (remove-if (lambda (message-id)
                                (let* ((summary (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id))))
-                                      (subject (plist-get summary :subject)))
+                                      (subject (notmuch-sanitize (plist-get summary :subject))))
                                  (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
                              (nm-call-notmuch
                               "search"
