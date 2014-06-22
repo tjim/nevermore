@@ -396,10 +396,8 @@ buffer containing notmuch's output and signal an error."
   "Bury the current nevermore buffers."
   (interactive)
   (let ((b (get-buffer nm-view-buffer)))
-    (nm-log "quitting %S" b)
     (when b (replace-buffer-in-windows b)))
   (let ((b (get-buffer nm-results-buffer)))
-    (nm-log "quitting %S" b)
     (when b (replace-buffer-in-windows b))))
 
 (defun nm-log (x &rest args)
@@ -543,6 +541,7 @@ buffer containing notmuch's output and signal an error."
          (msgs (nm-flatten-forest forest))
          (buffer (get-buffer-create nm-view-buffer)))
     (setq nm-view-buffer-contents-query query)
+    (set-window-dedicated-p (get-buffer-window buffer) t) ; window will be deleted on nm-bury
     (with-current-buffer buffer
       (setq notmuch-show-process-crypto notmuch-crypto-process-mime
             notmuch-show-elide-non-resulting-messages t
@@ -1036,104 +1035,27 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
       (nm-mode)))
 
 ;;; completion
+;;; IN PROGRESS: Currently you must be in company-mode and execute company-nm to get completion
 (require 'company)
 (eval-when-compile (require 'cl))
 
-;; (defun company-nm-insert (match)
-;;   "Replace MATCH with the expanded abbrev."
-;;   (expand-abbrev))
-
 ;;;###autoload
-(defun company-nm-insert (completion-text)
-  (let* ((end (point))
-         (beg (save-excursion
-                (re-search-backward "\\(\\`\\|[\n:,]\\)[ \t]*")
-                (goto-char (match-end 0))
-                (point))))
-    (delete-region beg end)
-    (goto-char beg)
-    (message "completion-text: %s" completion-text)
-    (insert completion-text)))
-(setq company-frontends '(company-pseudo-tooltip-frontend))
-(defun company-nm (command &optional arg &rest ignored)
-  "`company-mode' completion back-end for nm."
+(defvar-local company-nm-last-prefix nil)
+(defun company-nm (command &optional arg &rest ignore)
+  "`company-mode' completion back-end for `nevermore (nm)'."
   (interactive (list 'interactive))
-  (case command
-    (interactive (company-begin-backend 'company-nm
-                                        'company-nm-insert))
-    (prefix (let* ((end (point))
-                   (beg (save-excursion
-                          (re-search-backward "\\(\\`\\|[\n:,]\\)[ \t]*")
-                          (goto-char (match-end 0))
-                          (point))))
-              (buffer-substring-no-properties beg end)))
-    (candidates (let ((completion-ignore-case t))
-                  (let ((results (car (completion-substring--all-completions arg nm-completion-addresses nil 0))))
-                    results)))
-    (ignore-case t)
-    (no-cache t)
-    (sorted t)))
-
-;;; HACK: override this function from company.el for substring completion
-(defun company--create-lines (selection limit)
-
-  (let ((len company-candidates-length)
-        (numbered 99999)
-        lines
-        width
-        lines-copy
-        previous
-        remainder
-        new)
-
-    ;; Scroll to offset.
-    (setq limit (company-pseudo-tooltip-update-offset selection len limit))
-
-    (when (> company-tooltip-offset 0)
-      (setq previous (format "...(%d)" company-tooltip-offset)))
-
-    (setq remainder (- len limit company-tooltip-offset)
-          remainder (when (> remainder 0)
-                      (setq remainder (format "...(%d)" remainder))))
-
-    (decf selection company-tooltip-offset)
-    (setq width (max (length previous) (length remainder))
-          lines (nthcdr company-tooltip-offset company-candidates)
-          len (min limit len)
-          lines-copy lines)
-
-    (dotimes (i len)
-      (setq width (max (length (pop lines-copy)) width)))
-    (setq width (min width (window-width)))
-
-    (setq lines-copy lines)
-
-    ;; number can make tooltip too long
-    (when company-show-numbers
-      (setq numbered company-tooltip-offset))
-
-    (when previous
-      (push (propertize (company-safe-substring previous 0 width)
-                        'face 'company-tooltip)
-            new))
-
-    (dotimes (i len)
-      (push (company-fill-propertize
-             (if (>= numbered 10)
-                 (pop lines)
-               (incf numbered)
-               (format "%s %d"
-                       (company-safe-substring (pop lines)
-                                               0 (- width 2))
-                       (mod numbered 10)))
-             width (equal i selection))
-            new))
-
-    (when remainder
-      (push (propertize (company-safe-substring remainder 0 width)
-                        'face 'company-tooltip)
-            new))
-
-    (setq lines (nreverse new))))
+  (let ((case-fold-search t))
+    (pcase command
+      (`interactive (company-begin-backend 'company-nm))
+      (`prefix (and (eq major-mode 'message-mode)
+                    (looking-back "^\\(To\\|Cc\\|Bcc\\):.*"
+                                  (line-beginning-position))
+                    (setq company-nm-last-prefix (company-grab-symbol))))
+      (`candidates (let ((results (completion-substring--all-completions arg nm-completion-addresses nil 0)))
+                     (when results (car results))))
+      (`match (if (string-match company-nm-last-prefix arg)
+                  (match-end 0)
+                0))
+      (`no-cache t))))
 
 (provide 'nm)
