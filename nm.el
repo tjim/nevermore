@@ -4,11 +4,11 @@
 ;;; * Incremental search by message or thread
 ;;; * Snooze
 ;;; * Junk filtering
-;;; * TODO mail address completion
+;;; * Mail address completion
+;;; * TODO update mail completion addresses on message send 
 ;;; * TODO more navigation fixes (recenter C-l)
 ;;; * TODO mail defer queue
 ;;; * TODO UI for wakeup times
-;;; * TODO IMAP integration
 ;;; * TODO diary integration
 ;;; * TODO snooze by natural date
 ;;; * TODO triage (http://rowansimpson.com/2013/04/16/triage/)
@@ -481,56 +481,64 @@ buffer containing notmuch's output and signal an error."
         (cons msg (nm-flatten-thread replies))
       (nm-flatten-thread replies))))
 
-;;; completion
+;;; async address harvesting
 (defvar nm-completion-addresses nil)
-(defun nm-completion-addresses-from-file (filename header-length)
-  (ignore-errors
-    (with-temp-buffer
-      (insert-file-contents-literally filename nil 0 header-length)
-      (mail-extract-address-components (mail-fetch-field "To") t))))
-(defun nm-harvest-addresses ()
-  (interactive)
-  (let* ((from-me (mapconcat (lambda (x) (concat "from:" x)) (nm-my-addresses) " or "))
-         (files (ignore-errors
-                   (nm-call-notmuch
-                    "search"
-                    "--output=files"
-                    "--format=sexp"
-                    from-me)))
-         (header-lengths (when files
-                           (let ((files-file (make-temp-file "nm-files")))
-                             (unwind-protect
-                                 (progn
-                                   (with-temp-file files-file
-                                     (mapc (lambda (f) (insert f "\0"))
-                                           files))
-                                   (with-temp-buffer
-                                     (call-process-shell-command "xargs -0 -n 1 grep -h -m 1 -b '^$'" files-file t)
-                                     (insert ")")
-                                     (goto-char (point-min))
-                                     (insert "(")
-                                     (while (search-forward ":" nil t)
-                                       (replace-match "" nil t))
-                                     (goto-char (point-min))
-                                     (read (current-buffer))))
-                               (delete-file files-file))))))
-    (let (results)
-      (while (and files header-lengths)
-        (setq results (cons (nm-completion-addresses-from-file (car files) (car header-lengths)) results)
-              files (cdr files)
-              header-lengths (cdr header-lengths)))
-      (setq nm-completion-addresses (make-hash-table :test 'equal))
-      (mapc
-       (lambda (result)
-         (mapc
-          (lambda (parts)
-            (let* ((name (car parts))
-                   (email (cadr parts))
-                   (entry (if name (format "%s <%s>" name email) email)))
-              (puthash entry t nm-completion-addresses)))
-          result))
-       results)
-      nil)))
+(defvar nm-async-harvest-pending-proc nil)   ; the process of a harvest underway
+(defvar nm-async-harvest-pending-output nil) ; holds the not-yet-processed part of the output of the harvest process
+(defun nm-async-harvest ()
+  ; perform an asynchronous harvest on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results
+  (when nm-async-harvest-pending-proc
+      (ignore-errors (kill-process nm-async-harvest-pending-proc))
+      ; kill-process sends signal, actual process death is asynchronous, so indicate that we want the process dead
+      (setq nm-async-harvest-pending-proc nil))
+  (setq nm-completion-addresses (make-hash-table :test 'equal))
+  (setq nm-async-harvest-pending-output nil) ; indicate that we have not gotten any output yet
+  (setq nm-async-harvest-pending-proc
+        (notmuch-start-notmuch
+         "nm-async-harvest" ; process name
+         nil                ; process buffer
+         nil                ; process sentinel
+         "show"             ; notmuch command
+         "--format=sexp"
+         "--format-version=2"
+         "--body=false"
+         "--entire-thread=false"
+         (mapconcat (lambda (x) (concat "from:" x)) (nm-my-addresses) " or ")))
+  (set-process-filter
+   nm-async-harvest-pending-proc
+   (lambda (proc string)
+     (when (and nm-async-harvest-pending-proc (equal (process-id proc) (process-id nm-async-harvest-pending-proc)))
+       (if nm-async-harvest-pending-output
+                                        ; This is not the first time we have seen output, add it to anything remaining from last time
+           (setq nm-async-harvest-pending-output (concat nm-async-harvest-pending-output string))
+                                        ; This is the first time we have seen output.  Skip the initial open paren
+         (setq nm-async-harvest-pending-output (substring string 1)))
+       (while
+           (let ((result (ignore-errors (read-from-string nm-async-harvest-pending-output))))
+             (and result
+                  (let ((obj (car result))
+                        (offset (cdr result)))
+                    (setq nm-async-harvest-pending-output (substring nm-async-harvest-pending-output offset))
+                    (let ((msgs (nm-flatten-forest (list obj))))
+                      (mapc
+                       (lambda (msg)
+                         (let* ((headers (plist-get msg :headers))
+                                (to (ignore-errors (mail-extract-address-components (plist-get headers :To) t)))
+                                (cc (ignore-errors (mail-extract-address-components (plist-get headers :Cc) t)))
+                                (bcc (ignore-errors (mail-extract-address-components (plist-get headers :Bcc) t))))
+                           (mapc (lambda (parts)
+                                   (let* ((name (car parts))
+                                          (email (cadr parts))
+                                          (entry (if name (format "%s <%s>" name email) email)))
+                                     (puthash entry t nm-completion-addresses)))
+                                 (append to cc bcc))))
+                       msgs)
+                      t))))))))
+  ; return value
+  nil)
+
+
+
 ;;;
 
 (defun nm-show-messages (query &optional nodisplay)
@@ -1021,10 +1029,11 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-draw-header)
   (setq nm-results (nm-dynarray-create))
   (setq nm-all-results-count nil)
-                                        ;  (nm-wakeup)
+  (nm-wakeup)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'post-command-hook 'nm-results-post-command nil t)
+  (when (not nm-completion-addresses) (nm-async-harvest))
   (nm-refresh)
   )
 
