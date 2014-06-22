@@ -1035,12 +1035,12 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
       (nm-mode)))
 
 ;;; completion
-;;; IN PROGRESS: Currently you must be in company-mode and execute company-nm to get completion
+;;; NB company-minimum-prefix-length defaults to 3 so you don't get completion unless you type 3 characters
 (require 'company)
-(eval-when-compile (require 'cl))
+;(eval-when-compile (require 'cl))
 
-;;;###autoload
 (defvar-local company-nm-last-prefix nil)
+;;;###autoload
 (defun company-nm (command &optional arg &rest ignore)
   "`company-mode' completion back-end for `nevermore (nm)'."
   (interactive (list 'interactive))
@@ -1057,5 +1057,11 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
                   (match-end 0)
                 0))
       (`no-cache t))))
+
+(require 'message)
+(add-hook 'message-mode-hook '(lambda ()
+                                (company-mode)
+                                (make-local-variable 'company-backends)
+                                (setq company-backends '(company-nm))))
 
 (provide 'nm)
