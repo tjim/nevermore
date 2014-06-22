@@ -519,16 +519,18 @@ buffer containing notmuch's output and signal an error."
         (setq results (cons (nm-completion-addresses-from-file (car files) (car header-lengths)) results)
               files (cdr files)
               header-lengths (cdr header-lengths)))
-      (setq nm-completion-addresses
-            (mapcar
-             (lambda (parts)
-               (let ((name (car parts))
-                     (email (cadr parts)))
-                 (if name
-                     (format "%s <%s>" name email)
-                   email)))
-             (delete-dups (apply 'append results)))))))
-
+      (setq nm-completion-addresses (make-hash-table :test 'equal))
+      (mapc
+       (lambda (result)
+         (mapc
+          (lambda (parts)
+            (let* ((name (car parts))
+                   (email (cadr parts))
+                   (entry (if name (format "%s <%s>" name email) email)))
+              (puthash entry t nm-completion-addresses)))
+          result))
+       results)
+      nil)))
 ;;;
 
 (defun nm-show-messages (query &optional nodisplay)
@@ -567,7 +569,7 @@ buffer containing notmuch's output and signal an error."
              (if (nm-thread-mode)
                  (concat "thread:" (plist-get result :thread))
                (concat "id:" (plist-get result :id)))))
-      (funcall fn query)))))
+        (funcall fn query)))))
 
 (defun nm-refresh-result ()
   (let ((result (nm-result-at-pos)))
@@ -581,20 +583,20 @@ buffer containing notmuch's output and signal an error."
           (insert (nm-result-line result)))))))
 
 (defun nm-update-tags ()
-  ; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
-  ; So we want to combine q below with nm-query to detect this case.
+                                        ; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
+                                        ; So we want to combine q below with nm-query to detect this case.
   (if (nm-thread-mode)
       (nm-apply-to-result (lambda (q)
                             (let ((old-result (nm-result-at-pos))
                                   (now-result (nm-call-notmuch "search" "--output=summary" q)))
                               (if (and old-result now-result)
-                                (let ((old-tags (plist-get old-result :tags))
-                                      (now-tags (plist-get (car now-result) :tags)))
-                                  (unless (equal old-tags now-tags)
-                                    (let ((index (nm-result-index-at-pos)))
-                                      (when index
-                                        (nm-dynarray-set nm-results index (car now-result))))
-                                    (nm-refresh-result)))))))
+                                  (let ((old-tags (plist-get old-result :tags))
+                                        (now-tags (plist-get (car now-result) :tags)))
+                                    (unless (equal old-tags now-tags)
+                                      (let ((index (nm-result-index-at-pos)))
+                                        (when index
+                                          (nm-dynarray-set nm-results index (car now-result))))
+                                      (nm-refresh-result)))))))
     (nm-apply-to-result (lambda (q)
                           (let ((old-result (nm-result-at-pos))
                                 (now-result (nm-call-notmuch "show" "--body=false" "--entire-thread=false" q)))
@@ -689,9 +691,9 @@ buffer containing notmuch's output and signal an error."
                           (notmuch-tag q `("+later" ,tomorrow-etime-tag "-inbox"))
                           (when (or (not nm-wakeup-etime)                          ; no wakeup time is set
                                     (etime-before tomorrow-etime nm-wakeup-etime)) ; or wakeup time is after tomorrow
-                                (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
-                                (setq nm-wakeup-etime tomorrow-etime)
-                                (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
+                            (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
+                            (setq nm-wakeup-etime tomorrow-etime)
+                            (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
                           (nm-refresh)))))
 
 (defun nm-later-to-etime (later)
@@ -708,9 +710,9 @@ buffer containing notmuch's output and signal an error."
   (let* ((now-etime (apply 'encode-time (decode-time)))
          (count 0)
          (messages (nm-call-notmuch
-                       "search"
-                       "--output=messages"
-                       "tag:later")))
+                    "search"
+                    "--output=messages"
+                    "tag:later")))
     (mapc
      (lambda (message-id)
        (let* ((query (concat "id:" message-id))
@@ -730,7 +732,7 @@ buffer containing notmuch's output and signal an error."
                                         ; later-etime > now-etime: find time to set timer for
              (when (or (not nm-wakeup-etime) (etime-before later-etime nm-wakeup-etime))
                (let ((later-etime
-                      ; our later-etime may have >2 elements, run-at-time does not like this
+                                        ; our later-etime may have >2 elements, run-at-time does not like this
                       (list (car later-etime) (cadr later-etime))))
                  (setq nm-wakeup-etime later-etime)))))))
      messages)
@@ -875,16 +877,16 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-bogo-junk (query)
   (let ((shell-command
-        (concat notmuch-command " search --output=files ("
-                (shell-quote-argument query)
-                ") and not tag:junk | bogofilter -Ns -b")))
+         (concat notmuch-command " search --output=files ("
+                 (shell-quote-argument query)
+                 ") and not tag:junk | bogofilter -Ns -b")))
     (call-process-shell-command shell-command)))
 
 (defun nm-bogo-not-junk (query)
   (let ((shell-command
-        (concat notmuch-command " search --output=files ("
-                (shell-quote-argument query)
-                ") and tag:junk | bogofilter -Sn -b")))
+         (concat notmuch-command " search --output=files ("
+                 (shell-quote-argument query)
+                 ") and tag:junk | bogofilter -Sn -b")))
     (call-process-shell-command shell-command)))
 
 (defun nm-junk (&optional arg)
@@ -909,7 +911,7 @@ buffer containing notmuch's output and signal an error."
                                  (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
                              (nm-call-notmuch
                               "search"
-;                              "--limit=2000"
+                                        ;                              "--limit=2000"
                               "--output=messages"
                               "subject:SPAM not tag:junk"))))
     (message "Marking %d messages as junk" (length messages))
@@ -922,8 +924,8 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-interrupt ()
   (when nm-async-search-pending-proc
-      (ignore-errors (kill-process nm-async-search-pending-proc))
-      (setq nm-async-search-pending-proc nil))
+    (ignore-errors (kill-process nm-async-search-pending-proc))
+    (setq nm-async-search-pending-proc nil))
   (when nm-async-count-pending-proc
     (ignore-errors (kill-process nm-async-count-pending-proc))
     (setq nm-async-count-pending-proc nil)))
@@ -1019,12 +1021,12 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-draw-header)
   (setq nm-results (nm-dynarray-create))
   (setq nm-all-results-count nil)
-;  (nm-wakeup)
+                                        ;  (nm-wakeup)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'post-command-hook 'nm-results-post-command nil t)
   (nm-refresh)
-)
+  )
 
 ;;;###autoload
 (defun nm ()
