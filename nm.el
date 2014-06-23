@@ -724,7 +724,7 @@ buffer containing notmuch's output and signal an error."
     (list (string-to-number (match-string 1 later)) (string-to-number (match-string 2 later))
           later))) ;; throw in the string itself, etime only cares that there are 2 initial ints
 
-(defun nm-wakeup ()
+(defun nm-wakeup (&optional quiet)
   (interactive)
   (setq nm-wakeup-etime nil)
   (when nm-wakeup-timer
@@ -762,7 +762,7 @@ buffer containing notmuch's output and signal an error."
     (when nm-wakeup-etime
       (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
     (cond
-     ((eq count 0) (message "No messages are ready to wake up"))
+     ((eq count 0) (unless quiet (message "No messages are ready to wake up")))
      ((eq count 1) (message "Woke 1 message"))
      (t (message "Woke %d messages" count)))
     (nm-refresh)))
@@ -1045,7 +1045,7 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (nm-draw-header)
   (setq nm-results (nm-dynarray-create))
   (setq nm-all-results-count nil)
-  (nm-wakeup)
+  (nm-wakeup t)
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'post-command-hook 'nm-results-post-command nil t)
