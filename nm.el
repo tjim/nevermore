@@ -403,10 +403,12 @@ buffer containing notmuch's output and signal an error."
 (defun nm-bury ()
   "Bury the current nevermore buffers."
   (interactive)
-  (let ((b (get-buffer nm-view-buffer)))
-    (when b (replace-buffer-in-windows b)))
-  (let ((b (get-buffer nm-results-buffer)))
-    (when b (replace-buffer-in-windows b))))
+  (let ((w (get-buffer-window nm-view-buffer)))
+    (when w
+      (quit-window nil w)))
+  (let ((w (get-buffer-window nm-results-buffer)))
+    (when w
+      (quit-window nil w))))
 
 (defun nm-log (x &rest args)
   (let ((buffer (get-buffer-create "*nm-log*")))
@@ -563,7 +565,6 @@ buffer containing notmuch's output and signal an error."
          (msgs (nm-flatten-forest forest))
          (buffer (get-buffer-create nm-view-buffer)))
     (setq nm-view-buffer-contents-query query)
-;    (set-window-dedicated-p (get-buffer-window buffer) t) ; window will be deleted on nm-bury
     (with-current-buffer buffer
       (setq notmuch-show-process-crypto notmuch-crypto-process-mime
             notmuch-show-elide-non-resulting-messages t
