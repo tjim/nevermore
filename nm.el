@@ -94,6 +94,8 @@
 (defvar nm-mode-hook nil
   "Hook run when entering Nm mode.")
 
+(defvar nm-sort-order 'newest-first) ; or 'oldest-first
+
 ;; Constants
 
 (defconst nm-version "1.0")
@@ -163,6 +165,13 @@
 
 (defun nm-thread-mode ()
   (equal nm-query-mode 'thread))
+
+(defun nm-toggle-sort-order ()
+  (interactive)
+  (if (eq nm-sort-order 'oldest-first)
+      (setq nm-sort-order 'newest-first)
+    (setq nm-sort-order 'oldest-first))
+  (nm-refresh))
 
 (defun nm-toggle-query-mode ()
   (interactive)
@@ -330,7 +339,7 @@ buffer containing notmuch's output and signal an error."
              "--format=sexp"
              "--format-version=2"
              "--output=summary"
-             "--sort=newest-first"
+             (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first")
              nm-query)
           (notmuch-start-notmuch
            "nm-async-search" ; process name
@@ -1005,6 +1014,7 @@ buffer containing notmuch's output and signal an error."
     (define-key map "r" 'nm-reply)
     (define-key map "R" 'nm-reply-all)
     (define-key map "s" 'nm-snooze)
+    (define-key map "S" 'nm-toggle-sort-order)
     (define-key map "t" 'nm-tag)
     (define-key map "T" 'nm-focus-thread)
     (define-key map "W" 'nm-wakeup)
