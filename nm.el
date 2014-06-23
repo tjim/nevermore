@@ -5,12 +5,10 @@
 ;;; * Snooze
 ;;; * Junk filtering
 ;;; * Mail address completion
-;;; * TODO update mail completion addresses on message send 
-;;; * TODO more navigation fixes (recenter C-l)
+;;; * TODO update mail completion addresses on message send
 ;;; * TODO mail defer queue
-;;; * TODO UI for wakeup times
+;;; * TODO snooze/wake UI, snooze by natural date
 ;;; * TODO diary integration
-;;; * TODO snooze by natural date
 ;;; * TODO triage (http://rowansimpson.com/2013/04/16/triage/)
 
 (require 'notmuch)
@@ -551,6 +549,10 @@ buffer containing notmuch's output and signal an error."
 
 ;;;
 
+(defun nm-show-thread (query)
+  ; query should be a thread id
+  (notmuch-show query nil nil nm-query nil))
+
 (defun nm-show-messages (query &optional nodisplay)
   "Show the messages of QUERY in the nm-view-buffer.  If (not NODISPLAY) then make sure that the buffer is displayed."
   (let* ((forest (ignore-errors
@@ -561,7 +563,7 @@ buffer containing notmuch's output and signal an error."
          (msgs (nm-flatten-forest forest))
          (buffer (get-buffer-create nm-view-buffer)))
     (setq nm-view-buffer-contents-query query)
-    (set-window-dedicated-p (get-buffer-window buffer) t) ; window will be deleted on nm-bury
+;    (set-window-dedicated-p (get-buffer-window buffer) t) ; window will be deleted on nm-bury
     (with-current-buffer buffer
       (setq notmuch-show-process-crypto notmuch-crypto-process-mime
             notmuch-show-elide-non-resulting-messages t
@@ -648,7 +650,9 @@ buffer containing notmuch's output and signal an error."
 (defun nm-open ()
   "Open it."
   (interactive)
-  (nm-apply-to-result 'nm-show-messages))
+  (if (nm-thread-mode)
+      (nm-apply-to-result 'nm-show-thread)
+    (nm-apply-to-result 'nm-show-messages)))
 
 (defun nm-delete ()
   "Delete it."
