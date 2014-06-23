@@ -59,10 +59,15 @@ You can navigate in the search results with the usual emacs commands
 (`C-n`, `C-p`, `C-v`, `C->`, etc.)  You can also type `n` to move to
 the next result or `p` to move to the previous result.
 
-To view a message or thread, hit `SPC` or `RET`.  The message or
-thread will appear in a window below the search results.  Hit `SPC` to
-read more of the message, `DEL` to back up.  Hit `C-x 1` to get rid of
-the message/thread window.
+To view a message or thread, hit `SPC` or `RET`.  In message search
+mode, the message will appear in a window below the search results.
+Hit `SPC` to read more of the message, `DEL` to back up.  Hit `C-x 1`
+to get rid of the message window.
+
+In thread search mode, `SPC` or `RET` will replace the search results
+buffer with a buffer showing the selected thread.  You can use the
+usual keys from notmuch to navigate the thread.  Hit `q` to exit the
+thread and return to the results buffer.
 
 ### Searching
 
