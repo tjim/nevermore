@@ -350,6 +350,7 @@ buffer containing notmuch's output and signal an error."
            "--format-version=2"
            "--body=false"
            "--entire-thread=false"
+           ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
            nm-query)))
   (set-process-filter
    nm-async-search-pending-proc
