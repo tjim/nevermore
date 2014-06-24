@@ -4,6 +4,7 @@
 
 (require 'company)
 (require 'message)
+(require 'nm)
 ;(eval-when-compile (require 'cl))
 
 (defvar-local company-nm-last-prefix nil)

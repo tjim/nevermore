@@ -35,7 +35,7 @@ To:, Cc:, or Bcc: field.  Note that company-mode has a setting,
 
 that controls the number of characters you must type before
 autocompletion will take effect, and it defaults to three (3)
-characters.  You may set this as low as 0 characters.
+characters.  You may set this as low as 1 character.
 
 ### Junk mail filtering
 
@@ -133,7 +133,8 @@ because the later query uses stemming but the former does not.
 Hit `m` to send a new message.  In message search mode you can hit `r`
 to reply, `R` to reply-all, and `f` to forward a message.  Nevermore
 currently does not have a notion of the "current" message of thread,
-so these commands don't make sense in thread search mode.
+so these commands don't make sense in thread search mode.  However, if
+you are viewing a thread, `r` and `R` work just as in notmuch.el.
 
 ### Archiving
 
