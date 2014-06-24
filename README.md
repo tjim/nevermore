@@ -4,10 +4,10 @@ Nevermore is an experimental emacs email interface for [Notmuch][].
 It provides:
 
 * Interactive search
-* Snooze 
+* Snooze
 * Tag editing with autocompletion
-* Mail address completion (via company mode)
-* Junk mail filtering (via bogofilter)
+* Mail address completion (via [company-mode][])
+* Junk mail filtering (via [bogofilter][])
 
 ## Installation
 
@@ -22,8 +22,8 @@ init.el file:
 
 ### Mail address completion
 
-Nevermore uses company mode for mail address completion.  After
-installing company mode, add
+Nevermore uses [company-mode][] for mail address completion.  After
+installing company-mode, add
 
     (require 'company-nm)
 
@@ -118,7 +118,7 @@ You can use a wildcard character to avoid this behaviour:
 
 will search for "looki" and any extension of "looki".  One way to use
 this is to start a query ending in "*", then back up a character
-(C-b) and continue typing your query.  Note that
+(`C-b`) and continue typing your query.  Note that
 
     looking*
 
@@ -157,7 +157,8 @@ Nevermore has rudimentary support for snoozing messages and threads.
 In the results buffer hit `s` to snooze a result.  The result will be
 moved out of `tag:inbox` into `tag:later`.  Note that if you are
 searching on `tag:inbox`, the result will not immediately disappear
-from your search results; you need to re-run the search, which can be done by hitting `g`.
+from your search results; you need to re-run the search, which can be
+done by hitting `g`.
 
 A snoozed result will be moved back to `tag:inbox` the following
 morning.
@@ -168,3 +169,5 @@ snooze targets other than the next morning.
 [Notmuch]: http://notmuchmail.org/
 [Xapian]: http://xapian.org/
 [syntax]: http://notmuchmail.org/manpages/notmuch-search-terms-7/
+[company-mode]: http://company-mode.github.io/
+[bogofilter]: http://bogofilter.sourceforge.net/
