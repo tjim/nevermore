@@ -118,8 +118,7 @@
 (defvar nm-all-results-count nil
   "Count of all results for the current query.")
 
-;(defvar nm-query-mode 'message) ; or 'thread
-(defvar nm-query-mode 'thread)
+(defvar nm-query-mode 'message) ; or 'thread
 
 ;; Helpers
 
