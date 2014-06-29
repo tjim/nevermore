@@ -8,9 +8,13 @@
              (ignore-errors
                (peg-parse
 ;                (main number `(-- 0))
-                (date (or (and (or last next) @ (or week month day))
-                          (and day (opt @ month @ scalar-day (opt @comma scalar-year)))
-                          (and month @ scalar-day (opt @comma scalar-year)))
+                (date (or
+                       ; endian
+                       (and scalar-month (or @/ @-) scalar-day (or @/ @-) scalar-year) ; TODO: time
+                       ; my hacks
+                       (and (or last next) @ (or week month day))
+                       (and day (opt @ month @ scalar-day (opt @comma scalar-year)))
+                       (and month @ scalar-day (opt @comma scalar-year)))
                       `(-- 0))
                 (from "from" (eow))
                 (at "at" (eow))
@@ -66,8 +70,9 @@
                 (oct (or "october" "oct")   (eow)); `(-- 10))
                 (nov (or "november" "nov")  (eow)); `(-- 11))
                 (dec (or "december" "dec")  (eow)); `(-- 12))
-                (scalar-day number)  ; chronic enforces range [1,31]
-                (scalar-year number) ; chronic enforces range [1,9999]
+                (scalar-day number)   ; chronic enforces range [1,31]
+                (scalar-month number) ; chronic enforces range [1,12]
+                (scalar-year number)  ; chronic enforces range [1,9999]
                 (number (and
                          (or digits
                              direct-nums
@@ -171,6 +176,8 @@
                 (@: (* [space]) ":" (* [space]) (bow))
                 (@/ (* [space]) "/" (* [space]) (bow))
                 (@- (* [space]) "-" (* [space]) (bow))
+                (@@ (* [space]) (or (and "@" (* [space]))
+                                    (and "at" (+ [space]))) (bow))
                 (@comma (* [space]) "," (* [space]) (bow))
                 ))))
         (if result
