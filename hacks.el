@@ -7,10 +7,10 @@
       (let ((result
              (ignore-errors
                (peg-parse
-                (main number `(-- 0))
+;                (main number `(-- 0))
                 (date (or (and (or last next) @ (or week month day))
-                          (and day (opt @ month @ num-day (opt @comma num-year)))
-                          (and month @ num-day (opt @comma num-year)))
+                          (and day (opt @ month @ scalar-day (opt @comma scalar-year)))
+                          (and month @ scalar-day (opt @comma scalar-year)))
                       `(-- 0))
                 (from "from" (eow))
                 (at "at" (eow))
@@ -66,10 +66,11 @@
                 (oct (or "october" "oct")   (eow)); `(-- 10))
                 (nov (or "november" "nov")  (eow)); `(-- 11))
                 (dec (or "december" "dec")  (eow)); `(-- 12))
-                (num-day [digit] (opt [digit]) (eow))
-                (num-year [digit] [digit] [digit] [digit] (eow))
+                (scalar-day number)  ; chronic enforces range [1,31]
+                (scalar-year number) ; chronic enforces range [1,9999]
                 (number (and
-                         (or direct-nums
+                         (or digits
+                             direct-nums
                              single-nums
                              direct-ordinals
                              single-ordinals
@@ -84,6 +85,7 @@
                                  (setq b (cdr b)))
                                a))
                          ))
+                (digits (substring (+ [digit])) `(s -- (string-to-number s)))
                 (direct-nums (or
                               (and "eleven"    (eow) `(-- 11))
                               (and "twelve"    (eow) `(-- 12))
