@@ -12,9 +12,9 @@
                        ; endian
                        (and scalar-month (or @/ @-) scalar-day (or @/ @-) scalar-year) ; TODO: time
                        ; my hacks
-                       (and (or last next) @ (or week month day))
-                       (and day (opt @ month @ scalar-day (opt @comma scalar-year)))
-                       (and month @ scalar-day (opt @comma scalar-year)))
+                       (and (or last next) @ (or week month-name day-name))
+                       (and day-name (opt @ month-name @ scalar-day (opt @comma scalar-year)))
+                       (and month-name @ scalar-day (opt @comma scalar-year)))
                       `(-- 0))
                 (from "from" (eow))
                 (at "at" (eow))
@@ -32,47 +32,71 @@
                 (past "past" (eow) `(-- 'past))
                 (future (or "future" "in") (eow) `(-- 'future))
                 (week "week" (eow))
-                (night "night" (eow))
                 (noon "noon" (eow))
                 (quarter "quarter" (eow))
                 (half "half" (eow))
                 (during "during" (eow))
                 (oclock "oclock" (eow))
+                (after "after" (eow))
+                (yesterday "yesterday" (eow))
+
+                ; misc Repeaters
+                (opt-s (opt "s"))
+                (year "year" opt-s                          (eow) `(-- 'year))
+                (season "season" opt-s                      (eow) `(-- 'season))
+                (month "month" opt-s                        (eow) `(-- 'month))
+                (fortnight "fortnight" opt-s                (eow) `(-- 'fortnight))
+                (week "week" opt-s                          (eow) `(-- 'week))
+                (weekend "weekend" opt-s                    (eow) `(-- 'weekend))
+                (weekday (or "week" "business") "day" opt-s (eow) `(-- 'weekday))
+                (day "day" opt-s                            (eow) `(-- 'day))
+                (hour (or "hr" "hour") opt-s                (eow) `(-- 'hour))
+                (minute (or "min" "minute") opt-s           (eow) `(-- 'minute))
+                (second (or "sec" "second") opt-s           (eow) `(-- 'second))
+
+                (day-portion (or am pm morning afternoon evening night)) ; RepeaterDayPortion
                 (am (or "am" "a.m." "a.m") (eow))
                 (pm (or "pm" "p.m." "p.m") (eow))
-                (after "after" (eow))
-                (afternoon "afternoon" (eow))
                 (morning "morning" (eow))
-                (yesterday "yesterday" (eow))
-                (season (or spring summer autumn winter))
+                (afternoon "afternoon" (eow))
+                (evening "evening" (eow))
+                (night (or "night" "nite") (eow))
+
+                (season-name (or spring summer autumn winter)) ; RepeaterSeasonName
                 (spring "spring"             (eow) `(--  0))
                 (summer "summer"             (eow) `(--  1))
                 (autumn (or "autumn" "fall") (eow) `(--  2))
                 (winter "winter"             (eow) `(--  3))
-                (day (or mon tue wed thu fri sat sun))
-                (mon (or "monday" "mon")    (eow)); `(-- 0))
-                (tue (or "tuesday" "tue")   (eow)); `(-- 1))
-                (wed (or "wednesday" "wed") (eow)); `(-- 2))
-                (thu (or "thursday" "thu")  (eow)); `(-- 3))
-                (fri (or "friday" "fri")    (eow)); `(-- 4))
-                (sat (or "saturday" "sat")  (eow)); `(-- 5))
-                (sun (or "sunday" "sun")    (eow)); `(-- 6))
-                (month (or jan feb mar apr may jun jul aug sep oct nov dec))
-                (jan (or "january" "jan")   (eow)); `(--  1))
-                (feb (or "february" "feb")  (eow)); `(--  2))
-                (mar (or "march" "mar")     (eow)); `(--  3))
-                (apr (or "april" "apr")     (eow)); `(--  4))
-                (may (or "may" "may")       (eow)); `(--  5))
-                (jun (or "june" "jun")      (eow)); `(--  6))
-                (jul (or "july" "jul")      (eow)); `(--  7))
-                (aug (or "august" "aug")    (eow)); `(--  8))
-                (sep (or "september" "sep") (eow)); `(--  9))
-                (oct (or "october" "oct")   (eow)); `(-- 10))
-                (nov (or "november" "nov")  (eow)); `(-- 11))
-                (dec (or "december" "dec")  (eow)); `(-- 12))
+
+                (day-name (or mon tue wed thu fri sat sun))
+                (mon (or "monday" "mon")    (eow) `(-- 0))
+                (tue (or "tuesday" "tue")   (eow) `(-- 1))
+                (wed (or "wednesday" "wed") (eow) `(-- 2))
+                (thu (or "thursday" "thu")  (eow) `(-- 3))
+                (fri (or "friday" "fri")    (eow) `(-- 4))
+                (sat (or "saturday" "sat")  (eow) `(-- 5))
+                (sun (or "sunday" "sun")    (eow) `(-- 6))
+
+                (month-name (or jan feb mar apr may jun jul aug sep oct nov dec)) ; RepeaterMonthName
+                (jan (or "january" "jan")   (eow) `(--  1))
+                (feb (or "february" "feb")  (eow) `(--  2))
+                (mar (or "march" "mar")     (eow) `(--  3))
+                (apr (or "april" "apr")     (eow) `(--  4))
+                (may (or "may" "may")       (eow) `(--  5))
+                (jun (or "june" "jun")      (eow) `(--  6))
+                (jul (or "july" "jul")      (eow) `(--  7))
+                (aug (or "august" "aug")    (eow) `(--  8))
+                (sep (or "september" "sep") (eow) `(--  9))
+                (oct (or "october" "oct")   (eow) `(-- 10))
+                (nov (or "november" "nov")  (eow) `(-- 11))
+                (dec (or "december" "dec")  (eow) `(-- 12))
+
                 (scalar-day number)   ; chronic enforces range [1,31]
+
                 (scalar-month number) ; chronic enforces range [1,12]
+
                 (scalar-year number)  ; chronic enforces range [1,9999]
+
                 (number (and
                          (or digits
                              direct-nums
