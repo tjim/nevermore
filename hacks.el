@@ -9,8 +9,10 @@
                (peg-parse
 ;                (main number `(-- 0))
                 (date (or
-                       ; endian
-                       (and scalar-month (or @/ @-) scalar-day (or @/ @-) scalar-year) ; TODO: time
+                       ; endian, month/day only, ignoring day/month, see definition.rb
+                       (and scalar-month (or @/ @-) scalar-day (or @/ @-) scalar-year (opt @@) (opt time))
+                       (and scalar-month (or @/ @-) scalar-day (opt @@) (opt time))
+                       (and scalar-day month-name scalar-year (opt @@) (opt time))
                        ; my hacks
                        (and (or last next) @ (or week month-name day-name))
                        (and day-name (opt @ month-name @ scalar-day (opt @comma scalar-year)))
@@ -24,13 +26,16 @@
                 (to "to" (eow))
                 (till "till" (eow))
                 (ago "ago" (eow))
+
                 (grabber (or last this next))
                 (last "last" (eow) `(-- 'last))
                 (this "this" (eow) `(-- 'this))
                 (next "next" (eow) `(-- 'next))
+
                 (pointer (or past future))
                 (past "past" (eow) `(-- 'past))
                 (future (or "future" "in") (eow) `(-- 'future))
+
                 (noon "noon" (eow))
                 (quarter "quarter" (eow))
                 (half "half" (eow))
@@ -38,6 +43,9 @@
                 (oclock "oclock" (eow))
                 (after "after" (eow))
                 (yesterday "yesterday" (eow))
+
+                ; RepeaterTime
+                (time number (opt (and ":" number (opt (and ":" number (opt (and ":" number)))))) (eow))
 
                 ; misc Repeaters
                 (opt-s (opt "s"))
