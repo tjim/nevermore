@@ -31,7 +31,6 @@
                 (pointer (or past future))
                 (past "past" (eow) `(-- 'past))
                 (future (or "future" "in") (eow) `(-- 'future))
-                (week "week" (eow))
                 (noon "noon" (eow))
                 (quarter "quarter" (eow))
                 (half "half" (eow))
