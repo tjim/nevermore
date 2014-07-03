@@ -18,7 +18,7 @@
       (let ((result
              (ignore-errors
                (peg-parse
-;                (main time)
+                (main time)
                 (date (or
                        (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (handle-endian a b c d)))
                        ; my hacks
@@ -56,10 +56,10 @@
                 (yesterday "yesterday" (eow))
 
                 ; RepeaterTime
-                (time number (or (and ":" number (or (and ":" number (or (and ":" number)
-                                                                         ""))
-                                                     ""))
-                                 ""))
+                (time number (or (and ":" number (or (and ":" number (or (and ":" number `(a b c d -- `(time ,a ,b ,c ,d)))
+                                                                         `(a b c -- `(time ,a ,b ,c))))
+                                                     `(a b -- `(time ,a ,b))))
+                                 `(a -- `(time ,a))))
                 ; misc Repeaters
                 (opt-s (opt "s"))
                 (year "year" opt-s                          (eow) `(-- 'year))
