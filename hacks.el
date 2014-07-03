@@ -1,4 +1,15 @@
 (require 'peg)
+(defvar endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
+(defun scalar-day-p (x)
+  (and (<= 1 x) (<= x 31)))
+(defun scalar-month-p (x)
+  (and (<= 1 x) (<= x 12)))
+(defun scalar-year-p (x)
+  (and (<= 1 x) (<= x 9999)))
+(defun handle-endian (a b c d)
+  (pcase endian
+    (`little (message "M=%S D=%S Y=%S T=%S" a b c d))   ; 1/31/2011 @ 2:22:22
+    (`middle (message "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
 (defun date-search-forward (&optional noerror)
   (interactive)
   (let ((starting-point (point))
@@ -7,17 +18,17 @@
       (let ((result
              (ignore-errors
                (peg-parse
-;                (main number `(-- 0))
+;                (main time)
                 (date (or
-                       ; endian, month/day only, ignoring day/month, see definition.rb
-                       (and scalar-month (or @/ @-) scalar-day (or @/ @-) scalar-year (opt @@) (opt time))
-                       (and scalar-month (or @/ @-) scalar-day (opt @@) (opt time))
-                       (and scalar-day month-name scalar-year (opt @@) (opt time))
+                       (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (handle-endian a b c d)))
                        ; my hacks
-                       (and (or last next) @ (or week month-name day-name))
-                       (and day-name (opt @ month-name @ scalar-day (opt @comma scalar-year)))
-                       (and month-name @ scalar-day (opt @comma scalar-year)))
-                      `(-- 0))
+                       (and (or last next) @ (or week month-name day-name))           ; next Monday
+                       (and day-name (opt @ month-name @ number (opt @comma number))) ; Tuesday May 1, 2012
+                       (and month-name @ number (opt @comma number))))                ; May 9, 2012
+                (number-opt (or number empty))
+                (time-opt (or time empty))
+                (empty "" `(-- nil))
+
                 (from "from" (eow))
                 (at "at" (eow))
                 (hence "hence" (eow))
@@ -45,8 +56,10 @@
                 (yesterday "yesterday" (eow))
 
                 ; RepeaterTime
-                (time number (opt (and ":" number (opt (and ":" number (opt (and ":" number)))))) (eow))
-
+                (time number (or (and ":" number (or (and ":" number (or (and ":" number)
+                                                                         ""))
+                                                     ""))
+                                 ""))
                 ; misc Repeaters
                 (opt-s (opt "s"))
                 (year "year" opt-s                          (eow) `(-- 'year))
@@ -62,12 +75,12 @@
                 (second (or "sec" "second") opt-s           (eow) `(-- 'second))
 
                 (day-portion (or am pm morning afternoon evening night)) ; RepeaterDayPortion
-                (am (or "am" "a.m." "a.m") (eow))
-                (pm (or "pm" "p.m." "p.m") (eow))
-                (morning "morning" (eow))
-                (afternoon "afternoon" (eow))
-                (evening "evening" (eow))
-                (night (or "night" "nite") (eow))
+                (am (or "am" "a.m." "a.m") (eow) `(-- 'am))
+                (pm (or "pm" "p.m." "p.m") (eow) `(-- 'pm))
+                (morning "morning" (eow) `(-- 'am))
+                (afternoon "afternoon" (eow) `(-- 'pm))
+                (evening "evening" (eow) `(-- 'pm))
+                (night (or "night" "nite") (eow) `(-- 'pm))
 
                 (season-name (or spring summer autumn winter)) ; RepeaterSeasonName
                 (spring "spring"             (eow) `(--  0))
@@ -97,12 +110,6 @@
                 (oct (or "october" "oct")   (eow) `(-- 10))
                 (nov (or "november" "nov")  (eow) `(-- 11))
                 (dec (or "december" "dec")  (eow) `(-- 12))
-
-                (scalar-day number)   ; chronic enforces range [1,31]
-
-                (scalar-month number) ; chronic enforces range [1,12]
-
-                (scalar-year number)  ; chronic enforces range [1,9999]
 
                 (number (and
                          (or digits
@@ -214,12 +221,13 @@
         (if result
             (progn
               (setq success t)
-              (message "Got number %S" result))
+              (message "Result: %S" result))
           (when (not (eq (point) (point-max)))
             (forward-char)
             (re-search-forward "\\<" nil 'end-of-buffer-on-fail)))
         ))
     (unless success
+      (message "Parse failure")
       (goto-char starting-point))
     ))
 
