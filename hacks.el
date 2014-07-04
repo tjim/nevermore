@@ -8,8 +8,10 @@
   (and (<= 1 x) (<= x 9999)))
 (defun handle-endian (a b c d)
   (pcase endian
-    (`little (message "M=%S D=%S Y=%S T=%S" a b c d))   ; 1/31/2011 @ 2:22:22
-    (`middle (message "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
+    (`little (format "M=%S D=%S Y=%S T=%S" a b c d))   ; 1/31/2011 @ 2:22:22
+    (`middle (format "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
+(defun handle-dmdyt (a b c d e)
+  (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c d e)) ; Tue May 2 2014 @ 4:00
 (defun date-search-forward (&optional noerror)
   (interactive)
   (let ((starting-point (point))
@@ -18,9 +20,12 @@
       (let ((result
              (ignore-errors
                (peg-parse
-                (main time)
+;                (main time)
                 (date (or
+                       ; endian
                        (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (handle-endian a b c d)))
+                       ; date
+                       (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (handle-dmdyt a b c d e)))
                        ; my hacks
                        (and (or last next) @ (or week month-name day-name))           ; next Monday
                        (and day-name (opt @ month-name @ number (opt @comma number))) ; Tuesday May 1, 2012
