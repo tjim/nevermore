@@ -61,8 +61,11 @@
                 (yesterday "yesterday" (eow))
 
                 ; RepeaterTime
-                (time (list (and number (opt (and ":" number (opt (and ":" number (opt (and ":" number))))))))
+                (time (list (and number
+                                 (opt (and ":" number (opt (and ":" number (opt (and ":" number))))))
+                                 day-portion-opt))
                       `(a -- `(time ,@a)))
+                (day-portion-opt (or day-portion empty))
                 ; misc Repeaters
                 (opt-s (opt "s"))
                 (year "year" opt-s                          (eow) `(-- 'year))
