@@ -2,17 +2,19 @@
   "One month from now, or specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
-     (if (eq MONTH 12)
-         `(,SECONDS ,MINUTES ,HOUR ,DAY ,1 ,(1+ YEAR) ,DOW ,DST ,ZONE)
-       `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1+ MONTH) ,YEAR ,DOW ,DST ,ZONE)))))
+     (set-noon
+      (if (eq MONTH 12)
+          `(,SECONDS ,MINUTES ,HOUR ,DAY ,1 ,(1+ YEAR) ,DOW ,DST ,ZONE)
+        `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1+ MONTH) ,YEAR ,DOW ,DST ,ZONE))))))
 
 (defun last-month (&optional dtime)
   "One month before now, or specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
-     (if (eq MONTH 1)
-         `(,SECONDS ,MINUTES ,HOUR ,DAY ,12 ,(1- YEAR) ,DOW ,DST ,ZONE)
-       `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1- MONTH) ,YEAR ,DOW ,DST ,ZONE)))))
+     (set-noon
+      (if (eq MONTH 1)
+          `(,SECONDS ,MINUTES ,HOUR ,DAY ,12 ,(1- YEAR) ,DOW ,DST ,ZONE)
+        `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1- MONTH) ,YEAR ,DOW ,DST ,ZONE))))))
 
 (defconst SECONDS-IN-DAY (* 24 60 60))
 
@@ -21,28 +23,50 @@
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (* 7 SECONDS-IN-DAY))))
          (target-dtime (decode-time target-etime)))
-    target-dtime))
+    (set-noon target-dtime)))
 
 (defun last-week (&optional dtime)
   "One week before now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (- (* 7 SECONDS-IN-DAY)))))
          (target-dtime (decode-time target-etime)))
-    target-dtime))
+    (set-noon target-dtime)))
 
 (defun tomorrow (&optional dtime)
   "One day from now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time SECONDS-IN-DAY)))
          (target-dtime (decode-time target-etime)))
-    target-dtime))
+    (set-noon target-dtime)))
 
 (defun yesterday (&optional dtime)
   "One day before now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (- SECONDS-IN-DAY))))
          (target-dtime (decode-time target-etime)))
-    target-dtime))
+    (set-noon target-dtime)))
+
+(defun next-dow (dow &optional dtime)
+  "Next day-of-week (0=sunday, etc.) from now, or from specified dtime"
+  (pcase (or dtime (decode-time))
+    (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+     (let* ((delta-days (if (> dow DOW) (- dow DOW) (- (+ 7 dow) DOW)))
+            (delta-seconds (* SECONDS-IN-DAY delta-days))
+            (etime (apply 'encode-time `(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))
+            (target-etime (time-add etime (seconds-to-time delta-seconds)))
+            (target-dtime (decode-time target-etime)))
+       (set-noon target-dtime)))))
+
+(defun last-dow (dow &optional dtime)
+  "Last day-of-week (0=sunday, etc.) from now, or from specified dtime"
+  (pcase (or dtime (decode-time))
+    (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+     (let* ((delta-days (if (> DOW dow) (- dow DOW) (- dow 7 DOW)))
+            (delta-seconds (* SECONDS-IN-DAY delta-days))
+            (etime (apply 'encode-time `(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))
+            (target-etime (time-add etime (seconds-to-time delta-seconds)))
+            (target-dtime (decode-time target-etime)))
+       (set-noon target-dtime)))))
 
 (defun set-time-of-day (target &optional dtime)
   (pcase target
@@ -52,13 +76,16 @@
         `(,T-SECONDS ,T-MINUTES ,T-HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE))))))
 
 (defun set-morning (&optional dtime)
-  (set-time-of-day '(0 0 6) dtime))
+  (set-time-of-day '(0 0 9) dtime))
 
 (defun set-noon (&optional dtime)
   (set-time-of-day '(0 0 12) dtime))
 
+(defun set-afternoon (&optional dtime)
+  (set-time-of-day '(0 0 15) dtime))
+
 (defun set-evening (&optional dtime)
-  (set-time-of-day '(0 0 18) dtime))
+  (set-time-of-day '(0 30 18) dtime))
 
 (defun set-midnight (&optional dtime)
   (set-time-of-day '(0 0 0) (tomorrow dtime))) ; at midnight, this returns time + 1 day
