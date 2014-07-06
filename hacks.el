@@ -1,4 +1,70 @@
+(defun next-month (&optional dtime)
+  "One month from now, or specified dtime"
+  (pcase (or dtime (decode-time))
+    (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+     (if (eq MONTH 12)
+         `(,SECONDS ,MINUTES ,HOUR ,DAY ,1 ,(1+ YEAR) ,DOW ,DST ,ZONE)
+       `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1+ MONTH) ,YEAR ,DOW ,DST ,ZONE)))))
+
+(defun last-month (&optional dtime)
+  "One month before now, or specified dtime"
+  (pcase (or dtime (decode-time))
+    (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+     (if (eq MONTH 1)
+         `(,SECONDS ,MINUTES ,HOUR ,DAY ,12 ,(1- YEAR) ,DOW ,DST ,ZONE)
+       `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1- MONTH) ,YEAR ,DOW ,DST ,ZONE)))))
+
+(defconst SECONDS-IN-DAY (* 24 60 60))
+
+(defun next-week (&optional dtime)
+  "One week from now, or from specified dtime"
+  (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
+         (target-etime (time-add etime (seconds-to-time (* 7 SECONDS-IN-DAY))))
+         (target-dtime (decode-time target-etime)))
+    target-dtime))
+
+(defun last-week (&optional dtime)
+  "One week before now, or from specified dtime"
+  (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
+         (target-etime (time-add etime (seconds-to-time (- (* 7 SECONDS-IN-DAY)))))
+         (target-dtime (decode-time target-etime)))
+    target-dtime))
+
+(defun tomorrow (&optional dtime)
+  "One day from now, or from specified dtime"
+  (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
+         (target-etime (time-add etime (seconds-to-time SECONDS-IN-DAY)))
+         (target-dtime (decode-time target-etime)))
+    target-dtime))
+
+(defun yesterday (&optional dtime)
+  "One day before now, or from specified dtime"
+  (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
+         (target-etime (time-add etime (seconds-to-time (- SECONDS-IN-DAY))))
+         (target-dtime (decode-time target-etime)))
+    target-dtime))
+
+(defun set-time-of-day (target &optional dtime)
+  (pcase target
+    (`(,T-SECONDS ,T-MINUTES ,T-HOUR . ,_)
+     (pcase (or dtime (decode-time))
+       (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+        `(,T-SECONDS ,T-MINUTES ,T-HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE))))))
+
+(defun set-morning (&optional dtime)
+  (set-time-of-day '(0 0 6) dtime))
+
+(defun set-noon (&optional dtime)
+  (set-time-of-day '(0 0 12) dtime))
+
+(defun set-evening (&optional dtime)
+  (set-time-of-day '(0 0 18) dtime))
+
+(defun set-midnight (&optional dtime)
+  (set-time-of-day '(0 0 0) (tomorrow dtime))) ; at midnight, this returns time + 1 day
+
 (require 'peg)
+
 (defvar endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
 (defun scalar-day-p (x)
   (and (<= 1 x) (<= x 31)))
@@ -12,6 +78,8 @@
     (`middle (format "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
 (defun handle-dmdyt (a b c d e)
   (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c d e)) ; Tue May 2 2014 @ 4:00
+(defun handle-emacs (a b c d e)
+  (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c e d)) ; Tue May 2 4:00 2014
 (defun date-search-forward (&optional noerror)
   (interactive)
   (let ((starting-point (point))
@@ -24,6 +92,8 @@
                 (date (or
                        ; endian
                        (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (handle-endian a b c d)))
+                       ; emacs standard date format
+                       (and day-name @ month-name @ number @ time @ number `(a b c d e -- (handle-emacs a b c d e)))
                        ; date
                        (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (handle-dmdyt a b c d e)))
                        ; my hacks
@@ -83,9 +153,9 @@
                 (day-portion (or am pm morning afternoon evening night)) ; RepeaterDayPortion
                 (am (or "am" "a.m." "a.m") (eow) `(-- 'am))
                 (pm (or "pm" "p.m." "p.m") (eow) `(-- 'pm))
-                (morning "morning" (eow) `(-- 'am))
-                (afternoon "afternoon" (eow) `(-- 'pm))
-                (evening "evening" (eow) `(-- 'pm))
+                (morning "morning"         (eow) `(-- 'am))
+                (afternoon "afternoon"     (eow) `(-- 'pm))
+                (evening "evening"         (eow) `(-- 'pm))
                 (night (or "night" "nite") (eow) `(-- 'pm))
 
                 (season-name (or spring summer autumn winter)) ; RepeaterSeasonName
@@ -94,14 +164,14 @@
                 (autumn (or "autumn" "fall") (eow) `(--  2))
                 (winter "winter"             (eow) `(--  3))
 
-                (day-name (or mon tue wed thu fri sat sun))
-                (mon (or "monday" "mon")    (eow) `(-- 0))
-                (tue (or "tuesday" "tue")   (eow) `(-- 1))
-                (wed (or "wednesday" "wed") (eow) `(-- 2))
-                (thu (or "thursday" "thu")  (eow) `(-- 3))
-                (fri (or "friday" "fri")    (eow) `(-- 4))
-                (sat (or "saturday" "sat")  (eow) `(-- 5))
-                (sun (or "sunday" "sun")    (eow) `(-- 6))
+                (day-name (or sun mon tue wed thu fri sat))
+                (sun (or "sunday" "sun")    (eow) `(-- 0))
+                (mon (or "monday" "mon")    (eow) `(-- 1))
+                (tue (or "tuesday" "tue")   (eow) `(-- 2))
+                (wed (or "wednesday" "wed") (eow) `(-- 3))
+                (thu (or "thursday" "thu")  (eow) `(-- 4))
+                (fri (or "friday" "fri")    (eow) `(-- 5))
+                (sat (or "saturday" "sat")  (eow) `(-- 6))
 
                 (month-name (or jan feb mar apr may jun jul aug sep oct nov dec)) ; RepeaterMonthName
                 (jan (or "january" "jan")   (eow) `(--  1))
