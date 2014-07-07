@@ -1,52 +1,55 @@
-(defun next-month (&optional dtime)
+(require 'peg)
+(defvar nm-endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
+
+(defun nm-next-month (&optional dtime)
   "One month from now, or specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
-     (set-noon
+     (nm-noon
       (if (eq MONTH 12)
           `(,SECONDS ,MINUTES ,HOUR ,DAY ,1 ,(1+ YEAR) ,DOW ,DST ,ZONE)
         `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1+ MONTH) ,YEAR ,DOW ,DST ,ZONE))))))
 
-(defun last-month (&optional dtime)
+(defun nm-last-month (&optional dtime)
   "One month before now, or specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
-     (set-noon
+     (nm-noon
       (if (eq MONTH 1)
           `(,SECONDS ,MINUTES ,HOUR ,DAY ,12 ,(1- YEAR) ,DOW ,DST ,ZONE)
         `(,SECONDS ,MINUTES ,HOUR ,DAY ,(1- MONTH) ,YEAR ,DOW ,DST ,ZONE))))))
 
 (defconst SECONDS-IN-DAY (* 24 60 60))
 
-(defun next-week (&optional dtime)
+(defun nm-next-week (&optional dtime)
   "One week from now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (* 7 SECONDS-IN-DAY))))
          (target-dtime (decode-time target-etime)))
-    (set-noon target-dtime)))
+    (nm-noon target-dtime)))
 
-(defun last-week (&optional dtime)
+(defun nm-last-week (&optional dtime)
   "One week before now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (- (* 7 SECONDS-IN-DAY)))))
          (target-dtime (decode-time target-etime)))
-    (set-noon target-dtime)))
+    (nm-noon target-dtime)))
 
-(defun tomorrow (&optional dtime)
+(defun nm-tomorrow (&optional dtime)
   "One day from now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time SECONDS-IN-DAY)))
          (target-dtime (decode-time target-etime)))
-    (set-noon target-dtime)))
+    (nm-noon target-dtime)))
 
-(defun yesterday (&optional dtime)
+(defun nm-yesterday (&optional dtime)
   "One day before now, or from specified dtime"
   (let* ((etime (if dtime (apply 'encode-time dtime) (current-time)))
          (target-etime (time-add etime (seconds-to-time (- SECONDS-IN-DAY))))
          (target-dtime (decode-time target-etime)))
-    (set-noon target-dtime)))
+    (nm-noon target-dtime)))
 
-(defun next-dow (dow &optional dtime)
+(defun nm-next-dow (dow &optional dtime)
   "Next day-of-week (0=sunday, etc.) from now, or from specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
@@ -55,9 +58,9 @@
             (etime (apply 'encode-time `(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))
             (target-etime (time-add etime (seconds-to-time delta-seconds)))
             (target-dtime (decode-time target-etime)))
-       (set-noon target-dtime)))))
+       (nm-noon target-dtime)))))
 
-(defun last-dow (dow &optional dtime)
+(defun nm-last-dow (dow &optional dtime)
   "Last day-of-week (0=sunday, etc.) from now, or from specified dtime"
   (pcase (or dtime (decode-time))
     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
@@ -66,7 +69,7 @@
             (etime (apply 'encode-time `(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))
             (target-etime (time-add etime (seconds-to-time delta-seconds)))
             (target-dtime (decode-time target-etime)))
-       (set-noon target-dtime)))))
+       (nm-noon target-dtime)))))
 
 (defun set-time-of-day (target &optional dtime)
   (pcase target
@@ -75,39 +78,30 @@
        (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
         `(,T-SECONDS ,T-MINUTES ,T-HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE))))))
 
-(defun set-morning (&optional dtime)
+(defun nm-morning (&optional dtime)
   (set-time-of-day '(0 0 9) dtime))
 
-(defun set-noon (&optional dtime)
+(defun nm-noon (&optional dtime)
   (set-time-of-day '(0 0 12) dtime))
 
-(defun set-afternoon (&optional dtime)
+(defun nm-afternoon (&optional dtime)
   (set-time-of-day '(0 0 15) dtime))
 
-(defun set-evening (&optional dtime)
+(defun nm-evening (&optional dtime)
   (set-time-of-day '(0 30 18) dtime))
 
-(defun set-midnight (&optional dtime)
-  (set-time-of-day '(0 0 0) (tomorrow dtime))) ; at midnight, this returns time + 1 day
+(defun nm-midnight (&optional dtime)
+  (set-time-of-day '(0 0 0) (nm-tomorrow dtime))) ; at midnight, this returns time + 1 day
 
-(require 'peg)
-
-(defvar endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
-(defun scalar-day-p (x)
-  (and (<= 1 x) (<= x 31)))
-(defun scalar-month-p (x)
-  (and (<= 1 x) (<= x 12)))
-(defun scalar-year-p (x)
-  (and (<= 1 x) (<= x 9999)))
-(defun handle-endian (a b c d)
-  (pcase endian
+(defun nm-handle-endian (a b c d)
+  (pcase nm-endian
     (`little (format "M=%S D=%S Y=%S T=%S" a b c d))   ; 1/31/2011 @ 2:22:22
     (`middle (format "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
-(defun handle-dmdyt (a b c d e)
+(defun nm-handle-dmdyt (a b c d e)
   (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c d e)) ; Tue May 2 2014 @ 4:00
-(defun handle-emacs (a b c d e)
+(defun nm-handle-emacs (a b c d e)
   (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c e d)) ; Tue May 2 4:00 2014
-(defun date-search-forward (&optional noerror)
+(defun nm-date-search-forward (&optional noerror)
   (interactive)
   (let ((starting-point (point))
         (success nil))
@@ -118,11 +112,11 @@
 ;                (main time)
                 (date (or
                        ; endian
-                       (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (handle-endian a b c d)))
+                       (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (nm-handle-endian a b c d)))
                        ; emacs standard date format
-                       (and day-name @ month-name @ number @ time @ number `(a b c d e -- (handle-emacs a b c d e)))
+                       (and day-name @ month-name @ number @ time @ number `(a b c d e -- (nm-handle-emacs a b c d e)))
                        ; date
-                       (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (handle-dmdyt a b c d e)))
+                       (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (nm-handle-dmdyt a b c d e)))
                        ; my hacks
                        (and (or last next) @ (or week month-name day-name))           ; next Monday
                        (and day-name (opt @ month-name @ number (opt @comma number))) ; Tuesday May 1, 2012
@@ -334,48 +328,5 @@
       (goto-char starting-point))
     ))
 
-(defun day()
-  (interactive)
-  (re-search-forward "\\<\\(monday\\|tuesday\\|wednesday\\|thursday\\|friday\\|saturday\\|sunday\\)\\>"))
-(defun skip()
-  (interactive)
-  (re-search-forward "[^[:word:]]+"))
-(defun peg-ex-parse-int ()
-  (interactive)
-  (message "Result: %S"
-           (peg-parse (number sign digit (* digit 
-                                            `(a b -- (+ (* a 10) b)))
-                              `(sign val -- (* sign val)))
-                      (sign (or (and "+" `(-- 1))
-                                (and "-" `(-- -1))
-                                (and ""  `(-- 1))))
-                      (digit [0-9] `(-- (- (char-before) ?0))))))
-(defun tt()
-  (interactive)
-  (peg-parse
-   (main (or single-nums direct-nums))
-   (direct-nums (or
-                 (and "eleven" (eow)                     `(-- 11))
-                 (and "twelve" (eow)                     `(-- 12))
-                 (and "thirteen" (eow)                   `(-- 13))
-                 (and "fourteen" (eow)                   `(-- 14))
-                 (and "fifteen" (eow)                    `(-- 15))
-                 (and "sixteen" (eow)                    `(-- 16))
-                 (and "seventeen" (eow)                  `(-- 17))
-                 (and "eighteen" (eow)                   `(-- 18))
-                 (and "nineteen" (eow)                   `(-- 19))
-                 (and "ninteen" (eow)                    `(-- 19)) ; common misspelling
-                 (and "zero" (eow)                       `(-- 0))
-                 (and "ten" (eow)                        `(-- 10))
-                 (and "a" (eow) (not (eol)) (not (eob)) `(-- 101)))) ; doesn't make sense for an 'a' at the end to be a 1
-   (single-nums (or
-                 (and "one" (eow)   `(-- 1000))
-                 (and "two" (eow)   `(-- 2))
-                 (and "three" (eow) `(-- 3))
-                 (and "four" (eow)  `(-- 4))
-                 (and "five" (eow)  `(-- 5))
-                 (and "six" (eow)   `(-- 6))
-                 (and "seven" (eow) `(-- 7))
-                 (and "eight" (eow) `(-- 8))
-                 (and "nine" (eow)  `(-- 9))))))
+
 
