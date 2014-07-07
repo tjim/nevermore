@@ -1,3 +1,7 @@
+; nm-dateparse.el
+; natural language date parser for nevermore
+; some kind of mutant version of chronic (https://github.com/mojombo/chronic)
+
 (require 'peg)
 (defvar nm-endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
 
@@ -101,6 +105,7 @@
   (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c d e)) ; Tue May 2 2014 @ 4:00
 (defun nm-handle-emacs (a b c d e)
   (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c e d)) ; Tue May 2 4:00 2014
+
 (defun nm-date-search-forward (&optional noerror)
   (interactive)
   (let ((starting-point (point))
@@ -327,6 +332,3 @@
       (message "Parse failure")
       (goto-char starting-point))
     ))
-
-
-
