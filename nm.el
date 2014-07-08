@@ -678,7 +678,7 @@ buffer containing notmuch's output and signal an error."
   (with-current-buffer nm-view-buffer
     (notmuch-mua-forward-message)))
 
-(defvar nm-snooze-default-target "tomorrow")
+(defvar nm-snooze-default-target "tomorrow 6am")
 (defvar nm-wakeup-timer nil)
 (defvar nm-wakeup-etime nil)
 

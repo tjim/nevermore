@@ -98,19 +98,19 @@
     (_ (or dtime (decode-time)))))
 
 (defun nm-morning (&optional dtime)
-  (set-time-of-day '(0 0 9) dtime))
+  (nm-handle-time `(time nil 9) dtime))
 
 (defun nm-noon (&optional dtime)
-  (set-time-of-day '(0 0 12) dtime))
+  (nm-handle-time `(time t 12) dtime))
 
 (defun nm-afternoon (&optional dtime)
-  (set-time-of-day '(0 0 15) dtime))
+  (nm-handle-time `(time t 3) dtime))
 
 (defun nm-evening (&optional dtime)
-  (set-time-of-day '(0 30 18) dtime))
+  (nm-handle-time `(time t 6 30) dtime))
 
 (defun nm-midnight (&optional dtime)
-  (set-time-of-day '(0 0 0) (nm-tomorrow dtime))) ; at midnight, this returns time + 1 day
+  (nm-handle-time `(time nil 0) (nm-tomorrow dtime))) ; at midnight, this returns time + 1 day
 
 (defun nm-canonical-dtime (dtime)
   (decode-time (apply 'encode-time dtime)))
@@ -119,13 +119,18 @@
 (defun nm-validate-dtime (dtime)
   (unless (nm-valid-dtime dtime) (error "Error: invalid date/time %S" dtime))
   dtime)
-(defun nm-handle-time (time)
+(defun nm-handle-time (time &optional dtime)
   (pcase time
-    (`(time ,day-portion . ,x)
-     (let ((hour (+ (nth 0 x) (if (eq day-portion 'pm) 12 0)))
-           (minutes (or (nth 1 x) 0))
-           (seconds (or (nth 2 x) 0)))
-       (pcase (decode-time)
+    (`(time ,pm . ,x)
+     (let* ((raw-hour (nth 0 x))
+            (hour (cond
+                   ((and (not pm) (eq raw-hour 12)) 0)
+                   ((not pm) raw-hour)
+                   ((and pm (eq raw-hour 12)) 12)
+                   (pm (+ 12 raw-hour))))
+            (minutes (or (nth 1 x) 0))
+            (seconds (or (nth 2 x) 0)))
+       (pcase (or dtime (decode-time))
          (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
           `(,seconds ,minutes ,hour ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))))
     (_ (nm-noon))))
@@ -182,8 +187,8 @@
                    (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (nm-handle-dow-m-d-y-t a b c d e)))
                                         ; my hacks
                    (and grabber week `(a b -- (nm-handle-week a b)))
-                   (and tomorrow (opt @@) time-opt `(a b -- (nm-handle-day 'last a b)))
-                   (and yesterday (opt @@) time-opt `(a b -- (nm-handle-day 'next a b)))
+                   (and tomorrow @@-opt time-opt `(a -- (nm-handle-time a (nm-tomorrow))))
+                   (and yesterday (opt @@) time-opt `(a -- (nm-handle-time a (nm-yesterday))))
                    (and noon `(a b -- (nm-handle-day 'this b)))
                    (and grabber-opt @ (or (and month-name                 `(a b c -- (nm-handle-month-name a b)))
                                           (and day-name (opt @@) time-opt `(a b c -- (nm-handle-day-name a b c)))))
@@ -241,12 +246,12 @@
             (second (or "sec" "second") opt-s           (eow) `(-- 'second))
 
             (day-portion (or am pm morning afternoon evening night)) ; RepeaterDayPortion
-            (am (or "am" "a.m." "a.m") (eow) `(-- 'am))
-            (pm (or "pm" "p.m." "p.m") (eow) `(-- 'pm))
-            (morning "morning"         (eow) `(-- 'am))
-            (afternoon "afternoon"     (eow) `(-- 'pm))
-            (evening "evening"         (eow) `(-- 'pm))
-            (night (or "night" "nite") (eow) `(-- 'pm))
+            (am (or "am" "a.m." "a.m") (eow) `(-- nil))
+            (pm (or "pm" "p.m." "p.m") (eow) `(-- t))
+            (morning "morning"         (eow) `(-- nil))
+            (afternoon "afternoon"     (eow) `(-- t))
+            (evening "evening"         (eow) `(-- t))
+            (night (or "night" "nite") (eow) `(-- t))
 
             (season-name (or spring summer autumn winter)) ; RepeaterSeasonName
             (spring "spring"             (eow) `(--  0))
@@ -388,8 +393,7 @@
             (@comma (* [space]) "," (* [space]) (bow))
             (@comma-opt (* [space]) (opt "," (* [space])) (bow))))))
     (unless result (goto-char starting-point))
-    (when result
-      (message "Result: %S" (current-time-string (apply 'encode-time (car result))))) ; temporary, for debugging
+    ; (when result (message "Result: %S" (current-time-string (apply 'encode-time (car result))))) ; for debugging
     (when result (car result))))
 
 (defun nm-date-search-forward ()
