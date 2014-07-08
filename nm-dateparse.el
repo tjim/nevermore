@@ -410,7 +410,7 @@
     (unless result (goto-char starting-point))
     result))
 
-(defun nm-dateparse-string (s)
+(defun nm-date-search-string (s)
   "Parse as a date."
   (with-temp-buffer
     (insert s)

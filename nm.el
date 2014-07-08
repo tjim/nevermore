@@ -684,10 +684,10 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-snooze  (&optional arg)
   "Snooze it.  With prefix, prompt for deadline"
-  (interactive "p")
+  (interactive "P")
   (let* ((target (if (not arg) nm-snooze-default-target
                   (read-string "Snooze until:" nm-snooze-default-target)))
-         (target-dtime (nm-dateparse-string target)))
+         (target-dtime (nm-date-search-string target)))
     (when (not target-dtime) (error "Error: cannot determine snooze time"))
     (let* ((target-etime (apply 'encode-time target-dtime))
            (target-etime-tag (format "+later.%d.%d" (car target-etime) (cadr target-etime))))
