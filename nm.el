@@ -7,13 +7,14 @@
 ;;; * Mail address completion
 ;;; * TODO update mail completion addresses on message send
 ;;; * TODO mail defer queue
-;;; * TODO snooze/wake UI, snooze by natural date
+;;; * TODO snooze/wake UI
 ;;; * TODO diary integration
 ;;; * TODO triage (http://rowansimpson.com/2013/04/16/triage/)
 
 (require 'notmuch)
 (require 'notmuch-lib)
 (require 'notmuch-mua)
+(require 'nm-dateparse)
 
 ;; Customization
 
@@ -677,46 +678,27 @@ buffer containing notmuch's output and signal an error."
   (with-current-buffer nm-view-buffer
     (notmuch-mua-forward-message)))
 
-;;; Times
-;;; We say an etime is a time as returned by encode-time
-;;; We say a dtime is a time as returned by decode-time
-
-(defun etime-compare (a b)
-  "Return <0 if a is before b, >0 if b is before a, 0 if a and b are the same time."
-  (if (eq (car a) (car b))
-      (- (cadr a) (cadr b))
-    (- (car a) (car b))))
-
-(defun etime-before (a b)
-  (< (etime-compare a b) 0))
-
-(defun next-morning (dtime)
-  "Calculate the next morning following a dtime.  Return as a dtime."
-  (let ((SEC 0)
-        (MINUTE 0)
-        (HOUR 4)
-        (DAY (cadddr dtime))
-        (REST (copy-seq (cdr(cdddr dtime)))))
-    `(,SEC ,MINUTE ,HOUR ,(1+ DAY) ,@REST)))
-
+(defvar nm-snooze-default-target "tomorrow")
 (defvar nm-wakeup-timer nil)
 (defvar nm-wakeup-etime nil)
 
-(defun nm-snooze ()
-  "Snooze it."
-  (interactive)
-  (nm-apply-to-result (lambda (q)
-                        (let* ((now-dtime (decode-time))
-                               (tomorrow-dtime (next-morning now-dtime))
-                               (tomorrow-etime (apply 'encode-time tomorrow-dtime))
-                               (tomorrow-etime-tag (format "+later.%d.%d" (car tomorrow-etime) (cadr tomorrow-etime))))
-                          (notmuch-tag q `("+later" ,tomorrow-etime-tag "-inbox"))
-                          (when (or (not nm-wakeup-etime)                          ; no wakeup time is set
-                                    (etime-before tomorrow-etime nm-wakeup-etime)) ; or wakeup time is after tomorrow
-                            (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
-                            (setq nm-wakeup-etime tomorrow-etime)
-                            (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
-                          (nm-refresh)))))
+(defun nm-snooze  (&optional arg)
+  "Snooze it.  With prefix, prompt for deadline"
+  (interactive "p")
+  (let* ((target (if (not arg) nm-snooze-default-target
+                  (read-string "Snooze until:" nm-snooze-default-target)))
+         (target-dtime (nm-dateparse target)))
+    (when (not target-dtime) (error "Error: cannot determine snooze time"))
+    (let* ((target-etime (apply 'encode-time target-dtime))
+           (target-etime-tag (format "+later.%d.%d" (car target-etime) (cadr target-etime))))
+      (nm-apply-to-result (lambda (q)
+                            (notmuch-tag q `("+later" ,target-etime-tag "-inbox"))
+                            (when (or (not nm-wakeup-etime)                        ; no wakeup time is set
+                                      (nm-etime-before target-etime nm-wakeup-etime)) ; or wakeup time is after target
+                              (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
+                              (setq nm-wakeup-etime target-etime)
+                              (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
+                            (nm-refresh))))))
 
 (defun nm-later-to-etime (later)
   (when (and later (string-match "later\\.\\([[:digit:]]+\\)\\.\\([[:digit:]]+\\)" later))
@@ -746,13 +728,13 @@ buffer containing notmuch's output and signal an error."
               (tags (plist-get msg :tags))
               (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
          (when later-etime
-           (if (not (etime-before now-etime later-etime))
+           (if (not (nm-etime-before now-etime later-etime))
                                         ; later-etime <= now-etime: wake up
                (progn
                  (setq count (1+ count))
                  (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))
                                         ; later-etime > now-etime: find time to set timer for
-             (when (or (not nm-wakeup-etime) (etime-before later-etime nm-wakeup-etime))
+             (when (or (not nm-wakeup-etime) (nm-etime-before later-etime nm-wakeup-etime))
                (let ((later-etime
                                         ; our later-etime may have >2 elements, run-at-time does not like this
                       (list (car later-etime) (cadr later-etime))))

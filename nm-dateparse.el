@@ -3,6 +3,20 @@
 ; some kind of mutant version of chronic (https://github.com/mojombo/chronic)
 
 (require 'peg)
+
+;;; Times
+;;; We say an etime is a time as returned by encode-time
+;;; We say a dtime is a time as returned by decode-time
+
+(defun nm-etime-compare (a b)
+  "Return <0 if a is before b, >0 if b is before a, 0 if a and b are the same time."
+  (if (eq (car a) (car b))
+      (- (cadr a) (cadr b))
+    (- (car a) (car b))))
+
+(defun nm-etime-before (a b)
+  (< (nm-etime-compare a b) 0))
+
 (defvar nm-endian 'little) ; 'little = M/D/Y, 'middle = D/M/Y
 
 (defun nm-next-month (&optional dtime)
@@ -80,7 +94,8 @@
     (`(,T-SECONDS ,T-MINUTES ,T-HOUR . ,_)
      (pcase (or dtime (decode-time))
        (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
-        `(,T-SECONDS ,T-MINUTES ,T-HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE))))))
+        `(,T-SECONDS ,T-MINUTES ,T-HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE))))
+    (_ (or dtime (decode-time)))))
 
 (defun nm-morning (&optional dtime)
   (set-time-of-day '(0 0 9) dtime))
@@ -97,16 +112,62 @@
 (defun nm-midnight (&optional dtime)
   (set-time-of-day '(0 0 0) (nm-tomorrow dtime))) ; at midnight, this returns time + 1 day
 
-(defun nm-handle-endian (a b c d)
-  (pcase nm-endian
-    (`little (format "M=%S D=%S Y=%S T=%S" a b c d))   ; 1/31/2011 @ 2:22:22
-    (`middle (format "D=%S M=%S Y=%S T=%S" a b c d)))) ; 31/1/2011 @ 3:00
-(defun nm-handle-dmdyt (a b c d e)
-  (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c d e)) ; Tue May 2 2014 @ 4:00
-(defun nm-handle-emacs (a b c d e)
-  (format "DN=%S MN=%S D=%S Y=%S T=%S" a b c e d)) ; Tue May 2 4:00 2014
+(defun nm-canonical-dtime (dtime)
+  (decode-time (apply 'encode-time dtime)))
+(defun nm-valid-dtime (dtime)
+  (equal dtime (nm-canonical-dtime dtime)))
+(defun nm-validate-dtime (dtime)
+  (unless (nm-valid-dtime dtime) (error "Error: invalid date/time %S" dtime))
+  dtime)
+(defun nm-handle-time (time)
+  (pcase time
+    (`(time ,day-portion . ,x)
+     (let ((hour (+ (nth 0 x) (if (eq day-portion 'pm) 12 0)))
+           (minutes (or (nth 1 x) 0))
+           (seconds (or (nth 2 x) 0)))
+       (pcase (decode-time)
+         (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+          `(,seconds ,minutes ,hour ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)))))
+    (_ (nm-noon))))
+(defun nm-handle-endian (a b year time)
+  (let ((month (if (eq nm-endian 'little) a b))
+        (day   (if (eq nm-endian 'little) b a)))
+    (nm-canonical-dtime ; to fix dow
+     (pcase (nm-handle-time time)
+       (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+        `(,SECONDS ,MINUTES ,HOUR ,day ,month ,year ,DOW ,DST ,ZONE))))))
+(defun nm-handle-dow-m-d-y-t (dow month day year time)
+  "Return a dtime for (dow month day year time)"
+  (nm-validate-dtime
+   (pcase (nm-handle-time time)
+     (`(,SECONDS ,MINUTES ,HOUR ,DAY ,MONTH ,YEAR ,DOW ,DST ,ZONE)
+      `(,SECONDS ,MINUTES ,HOUR ,day ,month ,year ,dow ,DST ,ZONE)))))
+(defun nm-handle-week (a b)
+  (pcase a
+      (`last (nm-last-week))
+      (`next (nm-next-week))
+      (`this (nm-last-dow 1 (nm-next-dow 1))))) ; this monday)
+(defun nm-handle-day (a b c)
+  (set-time-of-day c
+                   (pcase a
+                     (`last (nm-yesterday))
+                     (`next (nm-tomorrow))
+                     (`this (nm-noon)))))
+(defun nm-handle-month-name (a b)
+  (pcase a
+      (`last (nm-last-month b))
+      (`next (nm-next-month b))
+      (`this (nm-last-month b (nm-next-month b)))
+      (_     (nm-last-month b (nm-next-month b)))))
+(defun nm-handle-day-name (a b c)
+  (pcase a
+      (`last (nm-last-dow b))
+      (`next (nm-next-dow b))
+      (`this (nm-last-dow b (nm-next-dow b)))
+      (_     (nm-last-dow b (nm-next-dow b)))))
 
 (defun nm-date-search-forward (&optional noerror)
+  "Search for a date/time in the current buffer"
   (interactive)
   (let ((starting-point (point))
         (success nil))
@@ -119,25 +180,31 @@
                        ; endian
                        (and number (or @/ @-) number (or @/ @-) number-opt (opt @@) time-opt `(a b c d -- (nm-handle-endian a b c d)))
                        ; emacs standard date format
-                       (and day-name @ month-name @ number @ time @ number `(a b c d e -- (nm-handle-emacs a b c d e)))
+                       (and day-name @ month-name @ number @ time @ number `(a b c d e -- (nm-handle-dow-m-d-y-t a b c e d)))
                        ; date
-                       (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (nm-handle-dmdyt a b c d e)))
+                       (and day-name @ month-name @ number @ number-opt (opt @@) time-opt `(a b c d e -- (nm-handle-dow-m-d-y-t a b c d e)))
                        ; my hacks
-                       (and (or last next) @ (or week month-name day-name))           ; next Monday
+                       (and grabber week `(a b -- (nm-handle-week a b)))
+                       (and tomorrow (opt @@) time-opt `(a b -- (nm-handle-day 'last b c)))
+                       (and yesterday (opt @@) time-opt `(a b -- (nm-handle-day 'next b c)))
+                       (and noon `(a b -- (nm-handle-day 'this b)))
+                       (and grabber-opt @ (or (and month-name                 `(a b c -- (nm-handle-month-name a b)))
+                                              (and day-name (opt @@) time-opt `(a b c -- (nm-handle-day-name a b c)))))
                        (and day-name (opt @ month-name @ number (opt @comma number))) ; Tuesday May 1, 2012
                        (and month-name @ number (opt @comma number))))                ; May 9, 2012
                 (number-opt (or number empty))
                 (time-opt (or time empty))
+                (grabber-opt (or grabber empty))
                 (empty "" `(-- nil))
 
-                (from "from" (eow))
-                (at "at" (eow))
-                (hence "hence" (eow))
-                (now "now" (eow))
+                (from "from"     (eow))
+                (at "at"         (eow))
+                (hence "hence"   (eow))
+                (now "now"       (eow))
                 (before "before" (eow))
-                (to "to" (eow))
-                (till "till" (eow))
-                (ago "ago" (eow))
+                (to "to"         (eow))
+                (till "till"     (eow))
+                (ago "ago"       (eow))
 
                 (grabber (or last this next))
                 (last "last" (eow) `(-- 'last))
@@ -155,12 +222,12 @@
                 (oclock "oclock" (eow))
                 (after "after" (eow))
                 (yesterday "yesterday" (eow))
+                (tomorrow "tomorrow" (eow))
 
                 ; RepeaterTime
-                (time (list (and number
-                                 (opt (and ":" number (opt (and ":" number (opt (and ":" number))))))
-                                 day-portion-opt))
-                      `(a -- `(time ,@a)))
+                (time (list (and number (opt (and ":" number (opt (and ":" number))))))
+                      day-portion-opt
+                      `(a b -- `(time ,b ,@a)))
                 (day-portion-opt (or day-portion empty))
                 ; misc Repeaters
                 (opt-s (opt "s"))
@@ -318,7 +385,11 @@
                 (@- (* [space]) "-" (* [space]) (bow))
                 (@@ (* [space]) (or (and "@" (* [space]))
                                     (and "at" (+ [space]))) (bow))
+                (@@-opt (* [space]) (or (and "@" (* [space]))
+                                        (and "at" (+ [space]))
+                                        "") (bow))
                 (@comma (* [space]) "," (* [space]) (bow))
+                (@comma-opt (* [space]) (opt "," (* [space])) (bow))
                 ))))
         (if result
             (progn
@@ -332,3 +403,12 @@
       (message "Parse failure")
       (goto-char starting-point))
     ))
+
+(defun nm-dateparse (s)
+  "Parse as a date."
+  (with-temp-buffer
+    (insert s)
+    (goto-char (point-min))
+    (nm-date-search-forward)))
+
+(provide 'nm-dateparse)
