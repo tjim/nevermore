@@ -235,6 +235,12 @@ buffer containing notmuch's output and signal an error."
 
 (defvar nm-problem-before nil)
 
+(defun nm-sanitize (s)
+  (if s
+      (notmuch-sanitize s)
+    (message "nm-sanitize: nil")
+    s))
+
 (defun nm-result-line (result)
   "Return a line of text for a RESULT."
   (when (and result (not nm-problem-before) (not (plist-get result :date_relative)))
@@ -243,7 +249,7 @@ buffer containing notmuch's output and signal an error."
   (when result
     (let* ((date (plist-get result :date_relative))
            (authors (plist-get result :authors))
-           (subject (notmuch-sanitize (plist-get result :subject)))
+           (subject (nm-sanitize (plist-get result :subject)))
            (tags (plist-get result :tags)))
       (concat
        (propertize
@@ -604,8 +610,8 @@ buffer containing notmuch's output and signal an error."
           (insert (nm-result-line result)))))))
 
 (defun nm-update-tags ()
-                                        ; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
-                                        ; So we want to combine q below with nm-query to detect this case.
+; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
+; So we want to combine q below with nm-query to detect this case.
   (if (nm-thread-mode)
       (nm-apply-to-result (lambda (q)
                             (let ((old-result (nm-result-at-pos))
@@ -619,15 +625,21 @@ buffer containing notmuch's output and signal an error."
                                           (nm-dynarray-set nm-results index (car now-result))))
                                       (nm-refresh-result)))))))
     (nm-apply-to-result (lambda (q)
-                          (let ((old-result (nm-result-at-pos))
-                                (now-result (nm-call-notmuch "show" "--body=false" "--entire-thread=false" q)))
+                          (let* ((old-result (nm-result-at-pos))
+                                 (msgs (nm-flatten-forest (nm-call-notmuch "show" "--body=false" "--entire-thread=false" q)))
+                                 (msg (car msgs))
+                                 (now-result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
+                                                        :authors ,(plist-get (plist-get msg :headers) :From)
+                                                        :date_relative ,(plist-get msg :date_relative)
+                                                        :tags ,(plist-get msg :tags)
+                                                        :id ,(plist-get msg :id))))
                             (if (and old-result now-result)
                                 (let ((old-tags (plist-get old-result :tags))
-                                      (now-tags (plist-get (car now-result) :tags)))
+                                      (now-tags (plist-get now-result :tags)))
                                   (unless (equal old-tags now-tags)
                                     (let ((index (nm-result-index-at-pos)))
                                       (when index
-                                        (nm-dynarray-set nm-results index (car now-result))))
+                                        (nm-dynarray-set nm-results index now-result)))
                                     (nm-refresh-result)))))))))
 
 (defun nm-focus-thread ()
@@ -911,7 +923,7 @@ buffer containing notmuch's output and signal an error."
   (interactive)
   (let ((messages (remove-if (lambda (message-id)
                                (let* ((summary (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id))))
-                                      (subject (notmuch-sanitize (plist-get summary :subject))))
+                                      (subject (nm-sanitize (plist-get summary :subject))))
                                  (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
                              (nm-call-notmuch
                               "search"
