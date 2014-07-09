@@ -15,8 +15,11 @@ Nevermore is based on [Notmuch][], so you'll need to install Notmuch
 (including emacs support), and run it once from the command line to
 configure it.
 
-Then drop nm.el into your load-path and place this in your .emacs or
-init.el file:
+You'll also need the [peg](http://www.emacswiki.org/emacs/peg.el)
+package.
+
+Then drop the source files (nm.el, nm-dateparse.el, and company-nm.el)
+into your load-path and place this in your .emacs or init.el file:
 
     (require 'nm)
 
