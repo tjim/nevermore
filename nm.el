@@ -709,8 +709,8 @@ buffer containing notmuch's output and signal an error."
                                       (nm-etime-before target-etime nm-wakeup-etime)) ; or wakeup time is after target
                               (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
                               (setq nm-wakeup-etime target-etime)
-                              (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
-                            (nm-refresh))))))
+                              (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup))))))
+    (nm-update-tags)))
 
 (defun nm-later-to-etime (later)
   (when (and later (string-match "later\\.\\([[:digit:]]+\\)\\.\\([[:digit:]]+\\)" later))
