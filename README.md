@@ -15,8 +15,7 @@ Nevermore is based on [Notmuch][], so you'll need to install Notmuch
 (including emacs support), and run it once from the command line to
 configure it.
 
-You'll also need the [peg](http://www.emacswiki.org/emacs/peg.el)
-package.
+You'll also need the [peg][] package.
 
 Then drop the source files (nm.el, nm-dateparse.el, and company-nm.el)
 into your load-path and place this in your .emacs or init.el file:
@@ -164,13 +163,14 @@ from your search results; you need to re-run the search, which can be
 done by hitting `g`.
 
 A snoozed result will be moved back to `tag:inbox` the following
-morning.
-
-Ultimately, the plan is for nevermore to have a way for you to specify
-snooze targets other than the next morning.
+morning.  You can change the default snooze target by changing
+`nm-snooze-default-target` (it starts out as `tomorrow 6am`).  If you
+supply a prefix argument to the snooze command (`C-u s`), nevermore
+will prompt you for a target.
 
 [Notmuch]: http://notmuchmail.org/
 [Xapian]: http://xapian.org/
 [syntax]: http://notmuchmail.org/manpages/notmuch-search-terms-7/
 [company-mode]: http://company-mode.github.io/
 [bogofilter]: http://bogofilter.sourceforge.net/
+[peg]: http://www.emacswiki.org/emacs/peg.el
