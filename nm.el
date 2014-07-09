@@ -615,7 +615,7 @@ buffer containing notmuch's output and signal an error."
   (if (nm-thread-mode)
       (nm-apply-to-result (lambda (q)
                             (let ((old-result (nm-result-at-pos))
-                                  (now-result (nm-call-notmuch "search" "--output=summary" q)))
+                                  (now-result (nm-call-notmuch "search" "--output=summary" "--exclude=false" q)))
                               (if (and old-result now-result)
                                   (let ((old-tags (plist-get old-result :tags))
                                         (now-tags (plist-get (car now-result) :tags)))
@@ -626,7 +626,7 @@ buffer containing notmuch's output and signal an error."
                                       (nm-refresh-result)))))))
     (nm-apply-to-result (lambda (q)
                           (let* ((old-result (nm-result-at-pos))
-                                 (msgs (nm-flatten-forest (nm-call-notmuch "show" "--body=false" "--entire-thread=false" q)))
+                                 (msgs (nm-flatten-forest (nm-call-notmuch "show" "--body=false" "--entire-thread=false" "--exclude=false" q)))
                                  (msg (car msgs))
                                  (now-result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
                                                         :authors ,(plist-get (plist-get msg :headers) :From)
@@ -672,14 +672,16 @@ buffer containing notmuch's output and signal an error."
   (interactive)
   (nm-apply-to-result (lambda (q)
                         (notmuch-tag q '("+deleted" "-unread" "-inbox"))))
-  (nm-refresh))
+  (nm-update-tags)
+  (forward-line))
 
 (defun nm-archive ()
   "Archive it."
   (interactive)
   (nm-apply-to-result (lambda (q)
                         (notmuch-tag q '("-deleted" "-unread" "-inbox"))))
-  (nm-update-tags))
+  (nm-update-tags)
+  (forward-line))
 
 (defun nm-forward ()
   "Forward it."
@@ -710,7 +712,8 @@ buffer containing notmuch's output and signal an error."
                               (when nm-wakeup-timer (cancel-timer nm-wakeup-timer))
                               (setq nm-wakeup-etime target-etime)
                               (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup))))))
-    (nm-update-tags)))
+    (nm-update-tags)
+    (forward-line)))
 
 (defun nm-later-to-etime (later)
   (when (and later (string-match "later\\.\\([[:digit:]]+\\)\\.\\([[:digit:]]+\\)" later))
