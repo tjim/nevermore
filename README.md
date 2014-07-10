@@ -17,7 +17,7 @@ configure it.
 
 You'll also need the [peg][] package.
 
-Then drop the source files (nm.el, nm-dateparse.el, and company-nm.el)
+Then drop the source files (nm.el, nm-dateparse.el, and nm-company.el)
 into your load-path and place this in your .emacs or init.el file:
 
     (require 'nm)
@@ -27,7 +27,7 @@ into your load-path and place this in your .emacs or init.el file:
 Nevermore uses [company-mode][] for mail address completion.  After
 installing company-mode, add
 
-    (require 'company-nm)
+    (require 'nm-company)
 
 to your init file.  Nevermore will automatically derive completion
 candidates from your mail store, and display them as you type in a
