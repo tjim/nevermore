@@ -1,3 +1,5 @@
+;;; -*- lexical-binding: t -*-
+
 ;;; nm.el: N E V E R M O R E
 ;;;
 ;;; Emacs mail application with
