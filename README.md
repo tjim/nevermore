@@ -168,9 +168,20 @@ morning.  You can change the default snooze target by changing
 supply a prefix argument to the snooze command (`C-u s`), nevermore
 will prompt you for a target.
 
+### Jotmuch
+
+Nevermore supports searching for web page archives maintained in
+[jotmuch][].  Invoke nevermore with
+
+    M-x nm-jotmuch
+
+to search your jotmuch database.  Hitting `RET` on a result will open
+the original web page in your browser.
+
 [Notmuch]: http://notmuchmail.org/
 [Xapian]: http://xapian.org/
 [syntax]: http://notmuchmail.org/manpages/notmuch-search-terms-7/
 [company-mode]: http://company-mode.github.io/
 [bogofilter]: http://bogofilter.sourceforge.net/
 [peg]: http://www.emacswiki.org/emacs/peg.el
+[jotmuch]: https://github.com/davidlazar/jotmuch
