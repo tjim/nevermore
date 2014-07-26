@@ -78,6 +78,9 @@
 (defvar nm-empty-subject "[No subject]"
   "Text to use as subject when missing.")
 
+(defvar nm-empty-title "[No title]"
+  "Text to use as title when missing.")
+
 (defvar nm-empty-authors "[No authors]"
   "Text to use as authors when missing.")
 
@@ -175,10 +178,12 @@
 
 (defun nm-toggle-query-mode ()
   (interactive)
-  (if (nm-thread-mode)
-      (setq nm-query-mode 'message)
-    (setq nm-query-mode 'thread))
-  (nm-refresh))
+  (pcase nm-query-mode
+    (`jotmuch nil)
+    (`thread (setq nm-query-mode 'message)
+             (nm-refresh))
+    (`message (setq nm-query-mode 'thread)
+              (nm-refresh))))
 
 (defun nm-call-notmuch (&rest args)
   "Invoke `notmuch-command' with `args' and return the output.
@@ -287,9 +292,13 @@ buffer containing notmuch's output and signal an error."
   (let ((inhibit-read-only t))
     (setq header-line-format
           (concat
-           (if (nm-thread-mode)
-               (propertize "Thread search" 'face 'nm-header-face)
-             (propertize "Message search" 'face 'nm-header-face))
+	   (pcase nm-query-mode
+	     (`jotmuch 
+	      (propertize "Jotmuch search" 'face 'nm-header-face))
+	     (`thread     
+	      (propertize "Thread search" 'face 'nm-header-face))
+	     (_ ; default => `message
+	      (propertize "Message search" 'face 'nm-header-face)))
            ": "
            (propertize (nm-chomp nm-query) 'face 'nm-query-face)))))
 
@@ -325,70 +334,83 @@ buffer containing notmuch's output and signal an error."
   (nm-highlight-result)
   (nm-view-buffer-update))
 
+(defun nm-result-wrangler (handler &optional expect-sequence)
+  "Return a function that parses a process output into individual results and applies HANDLER to each result.
+Without EXPECT-SEQUENCE, assumes that the process output comes as a LISP list, with each list element being a result.
+If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP objects, concatenated."
+  (let ((pending-output (if expect-sequence "" nil))) ; NB pending-output must be lexically bound!!!
+    (lambda (proc string)
+      (unless pending-output
+        ; nil => this is the first output, and we are expecting a list of results as a single sexp, so skip the initial left paren
+        (setq string (substring string 1))
+        (setq pending-output ""))
+      (setq pending-output (concat pending-output string))
+      (while
+          (let ((result (ignore-errors (read-from-string pending-output))))
+            (and result
+                 (let ((obj (car result))
+                       (offset (cdr result)))
+                   (setq pending-output (substring pending-output offset))
+                   (funcall handler obj)
+                   t)))))))
+
 (defvar nm-async-search-pending-proc nil)   ; the process of a search underway
-(defvar nm-async-search-pending-output nil) ; holds the not-yet-processed part of the output of the search process
 (defun nm-async-search ()
   ; perform an asynchronous search on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results
   (when nm-async-search-pending-proc
       (ignore-errors (kill-process nm-async-search-pending-proc))
       ; kill-process sends signal, actual process death is asynchronous, so indicate that we want the process dead
       (setq nm-async-search-pending-proc nil))
-  (setq nm-async-search-pending-output nil) ; indicate that we have not gotten any output yet
   (setq nm-results (nm-dynarray-create))
-  (setq nm-async-search-pending-proc
-        (if (nm-thread-mode)
-            (notmuch-start-notmuch
-             "nm-async-search" ; process name
-             nil               ; process buffer
-             nil               ; process sentinel
-             "search"          ; notmuch command
-             "--format=sexp"
-             "--format-version=2"
-             "--output=summary"
-             (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first")
-             nm-query)
-          (notmuch-start-notmuch
-           "nm-async-search" ; process name
-           nil               ; process buffer
-           nil               ; process sentinel
-           "show"            ; notmuch command
-           "--format=sexp"
-           "--format-version=2"
-           "--body=false"
-           "--entire-thread=false"
-           ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
-           nm-query)))
-  (set-process-filter
-   nm-async-search-pending-proc
-   (lambda (proc string)
-     (when (and nm-async-search-pending-proc (equal (process-id proc) (process-id nm-async-search-pending-proc)))
-       (if nm-async-search-pending-output
-                                        ; This is not the first time we have seen output, add it to anything remaining from last time
-           (setq nm-async-search-pending-output (concat nm-async-search-pending-output string))
-                                        ; This is the first time we have seen output.  Skip the initial open paren
-         (setq nm-async-search-pending-output (substring string 1)))
-       (while
-           (let ((result (ignore-errors (read-from-string nm-async-search-pending-output))))
-             (and result
-                  (progn
-                    (let ((obj (car result))
-                          (offset (cdr result)))
-                      (setq nm-async-search-pending-output (substring nm-async-search-pending-output offset))
-                      (nm-async-search-new-result obj)
-                      t))))))))
-  ; return value
-  nil)
-(defun nm-async-search-new-result (result)
+  (pcase nm-query-mode
+    (`thread     
+     (setq nm-async-search-pending-proc
+           (notmuch-start-notmuch
+            "nm-async-search" ; process name
+            nil               ; process buffer
+            nil               ; process sentinel
+            "search"          ; notmuch command
+            "--format=sexp"
+            "--format-version=2"
+            "--output=summary"
+            (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first")
+            nm-query))
+     (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-thread-result)))
+    (`message 
+     (setq nm-async-search-pending-proc
+           (notmuch-start-notmuch
+            "nm-async-search" ; process name
+            nil               ; process buffer
+            nil               ; process sentinel
+            "show"            ; notmuch command
+            "--format=sexp"
+            "--format-version=2"
+            "--body=false"
+            "--entire-thread=false"
+            ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
+            nm-query))
+     (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-message-result)))
+    (`jotmuch 
+     (setq nm-async-search-pending-proc
+           (start-process 
+            "nm-async-search" ; process name
+            nil               ; process buffer
+            "jot"
+            "search"
+            "--format=(:id \"{{id}}\" :title \"{{title}}\" :url \"{{url}}\" :tags ({% for t in tags %} \"{{t}}\"{% endfor %}))"
+            nm-query))
+     (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-jotmuch-result t)))))
+
+(defun nm-async-search-thread-result (result)
   (when (and result (get-buffer nm-results-buffer))
-    (if (nm-thread-mode)
-         (with-current-buffer nm-results-buffer
-          (save-excursion
-            (goto-char (point-max))
-            (let ((inhibit-read-only t))
-              (insert (nm-result-line result) "\n"))
-            (setq nm-results (nm-dynarray-append nm-results result))))
-      (nm-async-search-message result))))
-(defun nm-async-search-message (obj)
+    (with-current-buffer nm-results-buffer
+      (save-excursion
+        (goto-char (point-max))
+        (let ((inhibit-read-only t))
+          (insert (nm-result-line result) "\n"))
+        (setq nm-results (nm-dynarray-append nm-results result))))))
+
+(defun nm-async-search-message-result (obj)
   (let* ((msgs (nm-flatten-forest (list obj)))
          (results (mapcar
                    (lambda (msg)
@@ -407,6 +429,33 @@ buffer containing notmuch's output and signal an error."
              (insert (nm-result-line result) "\n")
              (setq nm-results (nm-dynarray-append nm-results result)))
            results))))))
+
+(defun nm-async-search-jotmuch-result (result)
+  (when (and result (get-buffer nm-results-buffer))
+    (with-current-buffer nm-results-buffer
+      (save-excursion
+        (goto-char (point-max))
+        (let ((inhibit-read-only t))
+          (insert (nm-jotmuch-result-line result) "\n"))
+        (setq nm-results (nm-dynarray-append nm-results result))))))
+
+(defun nm-jotmuch-result-line (result)
+  "Return a line of text for a jotmuch RESULT."
+  (when result
+    (let* ((title (plist-get result :title))
+           (url (plist-get result :url))
+           (tags (plist-get result :tags)))
+      (concat
+       (propertize
+        (cond
+         ((and title (> (length title) 0)) title)
+         ((and url (> (length url) 0)) url)
+         (t nm-empty-title))
+        'face 'nm-read-face)
+       (when tags
+         (propertize
+          (format " (%s)" (mapconcat 'identity tags " "))
+          'face 'nm-tags-face))))))
 
 (defun nm-bury ()
   "Bury the current nevermore buffers."
@@ -437,27 +486,28 @@ buffer containing notmuch's output and signal an error."
     (setq nm-async-count-pending-proc nil))
   (nm-setq-mode-name "nevermore")
   (setq nm-all-results-count nil)
-  (setq nm-async-count-pending-proc
-        (notmuch-start-notmuch
-         "nm-async-count" ; process name
-         nil              ; process buffer
-         nil              ; process sentinel
-         "count"          ; notmuch command
-         (if (nm-thread-mode)
-             "--output=threads"
-           "--output=messages")
-         nm-query))
-  (set-process-filter nm-async-count-pending-proc
-                      (lambda (proc string)
-                        (when (and nm-async-count-pending-proc (equal (process-id proc) (process-id nm-async-count-pending-proc)))
-                          (setq nm-async-count-pending-proc nil)
-                          (setq nm-all-results-count (string-to-number (nm-chomp string)))
-                          (if nm-all-results-count
-                              (let ((results (cond ((eq nm-all-results-count 1) "1 result")
-                                                   ((eq nm-all-results-count 0) "no results")
-                                                   (t (format "%d results" nm-all-results-count)))))
-                                (nm-setq-mode-name (format "nevermore: %s" results)))
-                            (nm-setq-mode-name "nevermore"))))))
+  (unless (equal nm-query-mode 'jotmuch)
+    (setq nm-async-count-pending-proc
+	  (notmuch-start-notmuch
+	   "nm-async-count" ; process name
+	   nil              ; process buffer
+	   nil              ; process sentinel
+	   "count"          ; notmuch command
+	   (if (nm-thread-mode)
+	       "--output=threads"
+	     "--output=messages")
+	   nm-query))
+    (set-process-filter nm-async-count-pending-proc
+			(lambda (proc string)
+			  (when (and nm-async-count-pending-proc (equal (process-id proc) (process-id nm-async-count-pending-proc)))
+			    (setq nm-async-count-pending-proc nil)
+			    (setq nm-all-results-count (string-to-number (nm-chomp string)))
+			    (if nm-all-results-count
+				(let ((results (cond ((eq nm-all-results-count 1) "1 result")
+						     ((eq nm-all-results-count 0) "no results")
+						     (t (format "%d results" nm-all-results-count)))))
+				  (nm-setq-mode-name (format "nevermore: %s" results)))
+			      (nm-setq-mode-name "nevermore")))))))
 
 (defun nm-refresh ()
   "(Re)apply the query and refresh the *nm* buffer."
@@ -559,6 +609,13 @@ buffer containing notmuch's output and signal an error."
 
 ;;;
 
+(defun nm-show-url ()
+  (let ((result (nm-result-at-pos)))
+    (when result
+      (let ((url (plist-get result :url)))
+	(when url
+	  (browse-url url))))))
+
 (defun nm-show-thread (query)
   ; query should be a thread id
   (notmuch-show query nil nil nm-query nil))
@@ -614,60 +671,60 @@ buffer containing notmuch's output and signal an error."
 (defun nm-update-tags ()
 ; TODO: the result may no longer match the query (e.g., if the query was tag:unread and we've now read the message).
 ; So we want to combine q below with nm-query to detect this case.
-  (if (nm-thread-mode)
-      (nm-apply-to-result (lambda (q)
-                            (let ((old-result (nm-result-at-pos))
-                                  (now-result (nm-call-notmuch "search" "--output=summary" "--exclude=false" q)))
-                              (if (and old-result now-result)
-                                  (let ((old-tags (plist-get old-result :tags))
-                                        (now-tags (plist-get (car now-result) :tags)))
-                                    (unless (equal old-tags now-tags)
-                                      (let ((index (nm-result-index-at-pos)))
-                                        (when index
-                                          (nm-dynarray-set nm-results index (car now-result))))
-                                      (nm-refresh-result)))))))
-    (nm-apply-to-result (lambda (q)
-                          (let* ((old-result (nm-result-at-pos))
-                                 (msgs (nm-flatten-forest (nm-call-notmuch "show" "--body=false" "--entire-thread=false" "--exclude=false" q)))
-                                 (msg (car msgs))
-                                 (now-result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
-                                                        :authors ,(plist-get (plist-get msg :headers) :From)
-                                                        :date_relative ,(plist-get msg :date_relative)
-                                                        :tags ,(plist-get msg :tags)
-                                                        :id ,(plist-get msg :id))))
-                            (if (and old-result now-result)
-                                (let ((old-tags (plist-get old-result :tags))
-                                      (now-tags (plist-get now-result :tags)))
-                                  (unless (equal old-tags now-tags)
-                                    (let ((index (nm-result-index-at-pos)))
-                                      (when index
-                                        (nm-dynarray-set nm-results index now-result)))
-                                    (nm-refresh-result)))))))))
+  (pcase nm-query-mode
+    (`jotmuch nil)
+    (`thread (nm-apply-to-result (lambda (q)
+                                   (let ((old-result (nm-result-at-pos))
+                                         (now-result (nm-call-notmuch "search" "--output=summary" "--exclude=false" q)))
+                                     (if (and old-result now-result)
+                                         (let ((old-tags (plist-get old-result :tags))
+                                               (now-tags (plist-get (car now-result) :tags)))
+                                           (unless (equal old-tags now-tags)
+                                             (let ((index (nm-result-index-at-pos)))
+                                               (when index
+                                                 (nm-dynarray-set nm-results index (car now-result))))
+                                             (nm-refresh-result))))))))
+    (`message (nm-apply-to-result (lambda (q)
+                                    (let* ((old-result (nm-result-at-pos))
+                                           (msgs (nm-flatten-forest (nm-call-notmuch "show" "--body=false" "--entire-thread=false" "--exclude=false" q)))
+                                           (msg (car msgs))
+                                           (now-result `(:subject ,(plist-get (plist-get msg :headers) :Subject)
+                                                                  :authors ,(plist-get (plist-get msg :headers) :From)
+                                                                  :date_relative ,(plist-get msg :date_relative)
+                                                                  :tags ,(plist-get msg :tags)
+                                                                  :id ,(plist-get msg :id))))
+                                      (if (and old-result now-result)
+                                          (let ((old-tags (plist-get old-result :tags))
+                                                (now-tags (plist-get now-result :tags)))
+                                            (unless (equal old-tags now-tags)
+                                              (let ((index (nm-result-index-at-pos)))
+                                                (when index
+                                                  (nm-dynarray-set nm-results index now-result)))
+                                              (nm-refresh-result))))))))))
 
 (defun nm-focus-thread ()
   "Show the thread of the current message (in message mode) or just this thread (in thread mode)"
   (interactive)
-  (if (nm-thread-mode)
-      (nm-apply-to-result (lambda (q)
-                            (setq nm-query q)
-                            (nm-refresh)))
-    (nm-apply-to-result (lambda (q)
-                          (let ((result (nm-call-notmuch "search" "--output=summary" q)))
-                            (when result
-                              (let ((thread-id (plist-get (car result) :thread)))
-                                (when thread-id
-                                  (message "A")
-                                  (setq nm-query (concat "thread:" thread-id))
-                                  (message "B")
-                                  (nm-refresh)
-                                  (message "C")))))))))
+  (pcase nm-query-mode
+    (`jotmuch nil)
+    (`thread (nm-apply-to-result (lambda (q)
+                                   (setq nm-query q)
+                                   (nm-refresh))))
+    (`message (nm-apply-to-result (lambda (q)
+                                    (let ((result (nm-call-notmuch "search" "--output=summary" q)))
+                                      (when result
+                                        (let ((thread-id (plist-get (car result) :thread)))
+                                          (when thread-id
+                                            (setq nm-query (concat "thread:" thread-id))
+                                            (nm-refresh))))))))))
 
 (defun nm-open ()
   "Open it."
   (interactive)
-  (if (nm-thread-mode)
-      (nm-apply-to-result 'nm-show-thread)
-    (nm-apply-to-result 'nm-show-messages)))
+  (pcase nm-query-mode
+    (`jotmuch (nm-show-url))
+    (`thread (nm-apply-to-result 'nm-show-thread))
+    (`message (nm-apply-to-result 'nm-show-messages))))
 
 (defun nm-delete ()
   "Delete it."
@@ -725,46 +782,47 @@ buffer containing notmuch's output and signal an error."
 
 (defun nm-wakeup (&optional quiet)
   (interactive)
-  (setq nm-wakeup-etime nil)
-  (when nm-wakeup-timer
-    (cancel-timer nm-wakeup-timer)
-    (setq nm-wakeup-timer nil))
-  (let* ((now-etime (apply 'encode-time (decode-time)))
-         (count 0)
-         (messages (nm-call-notmuch
-                    "search"
-                    "--output=messages"
-                    "tag:later")))
-    (mapc
-     (lambda (message-id)
-       (let* ((query (concat "id:" message-id))
-              (msg (car
-                    (nm-call-notmuch
-                     "search"
-                     "--output=summary"
-                     query)))
-              (tags (plist-get msg :tags))
-              (later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
-         (when later-etime
-           (if (not (nm-etime-before now-etime later-etime))
+  (unless (equal nm-query-mode 'jotmuch)
+    (setq nm-wakeup-etime nil)
+    (when nm-wakeup-timer
+      (cancel-timer nm-wakeup-timer)
+      (setq nm-wakeup-timer nil))
+    (let* ((now-etime (apply 'encode-time (decode-time)))
+	   (count 0)
+	   (messages (nm-call-notmuch
+		      "search"
+		      "--output=messages"
+		      "tag:later")))
+      (mapc
+       (lambda (message-id)
+	 (let* ((query (concat "id:" message-id))
+		(msg (car
+		      (nm-call-notmuch
+		       "search"
+		       "--output=summary"
+		       query)))
+		(tags (plist-get msg :tags))
+		(later-etime (apply 'append (mapcar 'nm-later-to-etime tags))))
+	   (when later-etime
+	     (if (not (nm-etime-before now-etime later-etime))
                                         ; later-etime <= now-etime: wake up
-               (progn
-                 (setq count (1+ count))
-                 (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))
+		 (progn
+		   (setq count (1+ count))
+		   (notmuch-tag query `("-later" "+inbox" ,(concat "-" (caddr later-etime)))))
                                         ; later-etime > now-etime: find time to set timer for
-             (when (or (not nm-wakeup-etime) (nm-etime-before later-etime nm-wakeup-etime))
-               (let ((later-etime
+	       (when (or (not nm-wakeup-etime) (nm-etime-before later-etime nm-wakeup-etime))
+		 (let ((later-etime
                                         ; our later-etime may have >2 elements, run-at-time does not like this
-                      (list (car later-etime) (cadr later-etime))))
-                 (setq nm-wakeup-etime later-etime)))))))
-     messages)
-    (when nm-wakeup-etime
-      (setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
-    (cond
-     ((eq count 0) (unless quiet (message "No messages are ready to wake up")))
-     ((eq count 1) (message "Woke 1 message"))
-     (t (message "Woke %d messages" count)))
-    (nm-refresh)))
+			(list (car later-etime) (cadr later-etime))))
+		   (setq nm-wakeup-etime later-etime)))))))
+       messages)
+      (when nm-wakeup-etime
+	(setq nm-wakeup-timer (run-at-time nm-wakeup-etime nil 'nm-wakeup)))
+      (cond
+       ((eq count 0) (unless quiet (message "No messages are ready to wake up")))
+       ((eq count 1) (message "Woke 1 message"))
+       (t (message "Woke %d messages" count)))
+      (nm-refresh))))
 
 ;;; https://github.com/berryboy/chrono
 
@@ -1048,13 +1106,23 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
   (setq major-mode 'nm-mode)
   (run-mode-hooks 'nm-mode-hook)
   (add-hook 'post-command-hook 'nm-results-post-command nil t)
-  (when (not nm-completion-addresses) (nm-async-harvest))
+  (when (and (not (equal nm-query-mode 'jotmuch)) (not nm-completion-addresses)) (nm-async-harvest))
   (nm-refresh))
 
 ;;;###autoload
 (defun nm ()
   "Switch to *nm* buffer and load files."
   (interactive)
+  (switch-to-buffer nm-results-buffer)
+  (if (not (eq major-mode 'nm-mode))
+      (nm-mode)))
+
+;;;###autoload
+(defun nm-jotmuch ()
+  "Switch to *nm* buffer and run jotmuch."
+  (interactive)
+  (setq nm-query-mode 'jotmuch)
+  (setq nm-query "*")
   (switch-to-buffer nm-results-buffer)
   (if (not (eq major-mode 'nm-mode))
       (nm-mode)))
