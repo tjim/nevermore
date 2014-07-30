@@ -354,13 +354,16 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
                    (funcall handler obj)
                    t)))))))
 
+(defun nm-kill (async-proc)
+  (when async-proc
+    (set-process-filter async-proc nil) ; kill-process is async so prevent handling stale results
+    (ignore-errors (kill-process async-proc))
+    (setq async-proc nil)))
+
 (defvar nm-async-search-pending-proc nil)   ; the process of a search underway
 (defun nm-async-search ()
-  ; perform an asynchronous search on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results
-  (when nm-async-search-pending-proc
-      (ignore-errors (kill-process nm-async-search-pending-proc))
-      ; kill-process sends signal, actual process death is asynchronous, so indicate that we want the process dead
-      (setq nm-async-search-pending-proc nil))
+  "Perform an asynchronous search on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results"
+  (nm-kill nm-async-search-pending-proc)
   (setq nm-results (nm-dynarray-create))
   (pcase nm-query-mode
     (`thread     
@@ -387,7 +390,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
             "--format-version=2"
             "--body=false"
             "--entire-thread=false"
-            ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
+                                        ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
             nm-query))
      (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-message-result)))
     (`jotmuch 
@@ -481,9 +484,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
       (force-mode-line-update))))
 (defvar nm-async-count-pending-proc nil)
 (defun nm-async-count ()
-  (when nm-async-count-pending-proc
-    (ignore-errors (kill-process nm-async-count-pending-proc))
-    (setq nm-async-count-pending-proc nil))
+  (nm-kill nm-async-count-pending-proc)
   (nm-setq-mode-name "nevermore")
   (setq nm-all-results-count nil)
   (unless (equal nm-query-mode 'jotmuch)
@@ -552,15 +553,9 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
 ;;; async address harvesting
 (defvar nm-completion-addresses nil)
 (defvar nm-async-harvest-pending-proc nil)   ; the process of a harvest underway
-(defvar nm-async-harvest-pending-output nil) ; holds the not-yet-processed part of the output of the harvest process
 (defun nm-async-harvest ()
-  ; perform an asynchronous harvest on nm-query, displaying results in nm-results-buffer and storing sexps in nm-results
-  (when nm-async-harvest-pending-proc
-      (ignore-errors (kill-process nm-async-harvest-pending-proc))
-      ; kill-process sends signal, actual process death is asynchronous, so indicate that we want the process dead
-      (setq nm-async-harvest-pending-proc nil))
+  (nm-kill nm-async-harvest-pending-proc)
   (setq nm-completion-addresses (make-hash-table :test 'equal))
-  (setq nm-async-harvest-pending-output nil) ; indicate that we have not gotten any output yet
   (setq nm-async-harvest-pending-proc
         (notmuch-start-notmuch
          "nm-async-harvest" ; process name
@@ -572,40 +567,23 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
          "--body=false"
          "--entire-thread=false"
          (mapconcat (lambda (x) (concat "from:" x)) (nm-my-addresses) " or ")))
-  (set-process-filter
-   nm-async-harvest-pending-proc
-   (lambda (proc string)
-     (when (and nm-async-harvest-pending-proc (equal (process-id proc) (process-id nm-async-harvest-pending-proc)))
-       (if nm-async-harvest-pending-output
-                                        ; This is not the first time we have seen output, add it to anything remaining from last time
-           (setq nm-async-harvest-pending-output (concat nm-async-harvest-pending-output string))
-                                        ; This is the first time we have seen output.  Skip the initial open paren
-         (setq nm-async-harvest-pending-output (substring string 1)))
-       (while
-           (let ((result (ignore-errors (read-from-string nm-async-harvest-pending-output))))
-             (and result
-                  (let ((obj (car result))
-                        (offset (cdr result)))
-                    (setq nm-async-harvest-pending-output (substring nm-async-harvest-pending-output offset))
-                    (let ((msgs (nm-flatten-forest (list obj))))
-                      (mapc
-                       (lambda (msg)
-                         (let* ((headers (plist-get msg :headers))
-                                (to (ignore-errors (mail-extract-address-components (plist-get headers :To) t)))
-                                (cc (ignore-errors (mail-extract-address-components (plist-get headers :Cc) t)))
-                                (bcc (ignore-errors (mail-extract-address-components (plist-get headers :Bcc) t))))
-                           (mapc (lambda (parts)
-                                   (let* ((name (car parts))
-                                          (email (cadr parts))
-                                          (entry (if name (format "%s <%s>" name email) email)))
-                                     (puthash entry t nm-completion-addresses)))
-                                 (append to cc bcc))))
-                       msgs)
-                      t))))))))
-  ; return value
-  nil)
+  (set-process-filter nm-async-harvest-pending-proc (nm-result-wrangler 'nm-async-harvest-result)))
 
-
+(defun nm-async-harvest-result (obj)
+  (let ((msgs (nm-flatten-forest (list obj))))
+    (mapc
+     (lambda (msg)
+       (let* ((headers (plist-get msg :headers))
+              (to (ignore-errors (mail-extract-address-components (plist-get headers :To) t)))
+              (cc (ignore-errors (mail-extract-address-components (plist-get headers :Cc) t)))
+              (bcc (ignore-errors (mail-extract-address-components (plist-get headers :Bcc) t))))
+         (mapc (lambda (parts)
+                 (let* ((name (car parts))
+                        (email (cadr parts))
+                        (entry (if name (format "%s <%s>" name email) email)))
+                   (puthash entry t nm-completion-addresses)))
+               (append to cc bcc))))
+     msgs)))
 
 ;;;
 
@@ -1003,12 +981,8 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
     (message "")))
 
 (defun nm-interrupt ()
-  (when nm-async-search-pending-proc
-    (ignore-errors (kill-process nm-async-search-pending-proc))
-    (setq nm-async-search-pending-proc nil))
-  (when nm-async-count-pending-proc
-    (ignore-errors (kill-process nm-async-count-pending-proc))
-    (setq nm-async-count-pending-proc nil)))
+  (nm-kill nm-async-search-pending-proc)
+  (nm-kill nm-async-count-pending-proc))
 
 (defun nm-reset ()
   (interactive)
