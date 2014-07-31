@@ -293,9 +293,9 @@ buffer containing notmuch's output and signal an error."
     (setq header-line-format
           (concat
 	   (pcase nm-query-mode
-	     (`jotmuch 
+	     (`jotmuch
 	      (propertize "Jotmuch search" 'face 'nm-header-face))
-	     (`thread     
+	     (`thread
 	      (propertize "Thread search" 'face 'nm-header-face))
 	     (_ ; default => `message
 	      (propertize "Message search" 'face 'nm-header-face)))
@@ -366,7 +366,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
   (nm-kill nm-async-search-pending-proc)
   (setq nm-results (nm-dynarray-create))
   (pcase nm-query-mode
-    (`thread     
+    (`thread
      (setq nm-async-search-pending-proc
            (notmuch-start-notmuch
             "nm-async-search" ; process name
@@ -379,7 +379,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
             (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first")
             nm-query))
      (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-thread-result)))
-    (`message 
+    (`message
      (setq nm-async-search-pending-proc
            (notmuch-start-notmuch
             "nm-async-search" ; process name
@@ -393,9 +393,9 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
                                         ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
             nm-query))
      (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-message-result)))
-    (`jotmuch 
+    (`jotmuch
      (setq nm-async-search-pending-proc
-           (start-process 
+           (start-process
             "nm-async-search" ; process name
             nil               ; process buffer
             "jot"
@@ -498,17 +498,16 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
 	       "--output=threads"
 	     "--output=messages")
 	   nm-query))
-    (set-process-filter nm-async-count-pending-proc
-			(lambda (proc string)
-			  (when (and nm-async-count-pending-proc (equal (process-id proc) (process-id nm-async-count-pending-proc)))
-			    (setq nm-async-count-pending-proc nil)
-			    (setq nm-all-results-count (string-to-number (nm-chomp string)))
-			    (if nm-all-results-count
-				(let ((results (cond ((eq nm-all-results-count 1) "1 result")
-						     ((eq nm-all-results-count 0) "no results")
-						     (t (format "%d results" nm-all-results-count)))))
-				  (nm-setq-mode-name (format "nevermore: %s" results)))
-			      (nm-setq-mode-name "nevermore")))))))
+    (set-process-filter nm-async-count-pending-proc (nm-result-wrangler 'nm-async-count-result t))))
+
+(defun nm-async-count-result (obj)
+  (setq nm-all-results-count obj)
+  (if nm-all-results-count
+      (let ((results (cond ((eq nm-all-results-count 1) "1 result")
+                           ((eq nm-all-results-count 0) "no results")
+                           (t (format "%d results" nm-all-results-count)))))
+        (nm-setq-mode-name (format "nevermore: %s" results)))
+    (nm-setq-mode-name "nevermore")))
 
 (defun nm-refresh ()
   "(Re)apply the query and refresh the *nm* buffer."
