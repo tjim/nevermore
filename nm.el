@@ -622,7 +622,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
         (jit-lock-register #'notmuch-show-buttonise-links)
         (run-hooks 'notmuch-show-hook)
         (notmuch-show-goto-first-wanted-message)))
-    (when (not nodisplay)
+    (when (and (not nodisplay) (not (get-buffer-window nm-view-buffer)))
       (display-buffer-below-selected buffer `((window-height . ,(- (window-height) nm-results-window-size 2)))))))
 
 (defun nm-apply-to-result (fn)
