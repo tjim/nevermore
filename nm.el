@@ -1,4 +1,17 @@
+;;; nm.el --- Nevermore an experimental email interface for Notmuch
 ;;; -*- lexical-binding: t -*-
+
+;; Copyright (C) 2014 Trevor Jim
+;; Author: Trevor Jim
+;; Maintainer: Trevor Jim
+;; URL: https://github.com/tjim/nevermore
+;; Version: 0.1.0
+;; Package-Requires: ((notmuch "0.18") (peg "0.6") (company "0"))
+;; Keywords: mail,notmuch
+
+;; This file is not part of GNU Emacs.
+
+;;; Commentary:
 
 ;;; nm.el: N E V E R M O R E
 ;;;
@@ -12,6 +25,8 @@
 ;;; * TODO snooze/wake UI
 ;;; * TODO diary integration
 ;;; * TODO triage (http://rowansimpson.com/2013/04/16/triage/)
+
+;;; Code:
 
 (require 'notmuch)
 (require 'notmuch-lib)
