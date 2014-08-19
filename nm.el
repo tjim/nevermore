@@ -1,12 +1,21 @@
-;;; -*- lexical-binding: t -*-
+;;; nm.el --- N E V E R M O R E: an experimental email interface for Notmuch -*- lexical-binding: t -*-
 
-;;; nm.el: N E V E R M O R E
-;;;
-;;; Emacs mail application with
-;;; * Incremental search by message or thread
-;;; * Snooze
-;;; * Junk filtering
-;;; * Mail address completion
+;; Copyright (C) 2014 Trevor Jim
+;; Author: Trevor Jim
+;; Maintainer: Trevor Jim
+;; URL: https://github.com/tjim/nevermore
+;; Version: 1.0.0
+;; Package-Requires: ((notmuch "0.18") (peg "0.6") (company "0") (emacs "24"))
+
+;; This file is not part of GNU Emacs.
+
+;;; Commentary
+;; Nevermore is an Emacs mail application with
+;; * Incremental search by message or thread
+;; * Snooze
+;; * Junk filtering
+;; * Mail address completion
+
 ;;; * TODO update mail completion addresses on message send
 ;;; * TODO mail defer queue
 ;;; * TODO snooze/wake UI
@@ -1101,3 +1110,5 @@ Turning on `nm-mode' runs the hook `nm-mode-hook'.
       (nm-mode)))
 
 (provide 'nm)
+
+;;; nm.el ends here
