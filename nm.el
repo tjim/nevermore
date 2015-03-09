@@ -1,10 +1,10 @@
-;;; nm.el --- N E V E R M O R E: an experimental email interface for Notmuch -*- lexical-binding: t -*-
+;;; nm.el --- NEVERMORE: an email interface for Notmuch -*- lexical-binding: t -*-
 
-;; Copyright (C) 2014 Trevor Jim
+;; Copyright (C) 2014-2015 Trevor Jim
 ;; Author: Trevor Jim
 ;; Maintainer: Trevor Jim
 ;; URL: https://github.com/tjim/nevermore
-;; Version: 1.0.0
+;; Version: 1.1.0
 ;; Package-Requires: ((notmuch "0.18") (peg "0.6") (company "0") (emacs "24"))
 
 ;; This file is not part of GNU Emacs.
@@ -134,6 +134,8 @@
   "Count of all results for the current query.")
 
 (defvar nm-query-mode 'message) ; or 'thread
+
+(defvar nm-nevermore-command (executable-find "nevermore")) ; look for nevermore binary in exec-path; or, you could set it in nm-mode-hook
 
 ;; Helpers
 
@@ -389,19 +391,28 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
             nm-query))
      (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-thread-result)))
     (`message
-     (setq nm-async-search-pending-proc
-           (notmuch-start-notmuch
-            "nm-async-search" ; process name
-            nil               ; process buffer
-            nil               ; process sentinel
-            "show"            ; notmuch command
-            "--format=sexp"
-            "--format-version=2"
-            "--body=false"
-            "--entire-thread=false"
-                                        ; (if (eq nm-sort-order 'oldest-first) "--sort=oldest-first" "--sort=newest-first") ; not allowed for notmuch show
-            nm-query))
-     (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-message-result)))
+     (if nm-nevermore-command
+         (let ((notmuch-command nm-nevermore-command))
+           (setq nm-async-search-pending-proc
+                 (notmuch-start-notmuch
+                  "nm-async-search" ; process name
+                  nil               ; process buffer
+                  nil               ; process sentinel
+                  ""                ; notmuch command
+                  nm-query))
+           (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-thread-result)))
+       (setq nm-async-search-pending-proc
+             (notmuch-start-notmuch
+              "nm-async-search" ; process name
+              nil               ; process buffer
+              nil               ; process sentinel
+              "show"            ; notmuch command
+              "--format=sexp"
+              "--format-version=2"
+              "--body=false"
+              "--entire-thread=false"
+              nm-query))
+       (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-message-result))))
     (`jotmuch
      (setq nm-async-search-pending-proc
            (start-process
