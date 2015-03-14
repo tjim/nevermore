@@ -18,8 +18,10 @@ import (
 	"git.notmuchmail.org/git/notmuch.git/bindings/go/src/notmuch"
 	"github.com/msbranco/goconfig"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -37,30 +39,39 @@ func SearchMessages(query string) {
 	dbQuery := db.CreateQuery(query)
 	fmt.Printf("(")
 	firstMsg := true
-	for msgs := dbQuery.SearchMessages(); msgs.Valid(); msgs.MoveToNext() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGUSR1)
+	abort := false
+	for msgs := dbQuery.SearchMessages(); msgs.Valid() && !abort; msgs.MoveToNext() {
 		if !firstMsg {
 			fmt.Printf("\n")
 		}
 		firstMsg = false
 		msg := msgs.Get()
 		timestamp, _ := msg.GetDate()
-		fmt.Printf("(:subject %s :authors %s :date_relative %s :id %s",
-			elispQuote(msg.GetHeader("Subject")),
-			elispQuote(msg.GetHeader("From")),
-			elispQuote(timeRelativeDate(timestamp)),
-			elispQuote(msg.GetMessageId()))
-		fmt.Printf(" :tags (")
-		firstTag := true
-		for tags := msg.GetTags(); tags.Valid(); tags.MoveToNext() {
-			if !firstTag {
-				fmt.Printf(" ")
+		select {
+		case <-sigChan:
+			abort = true
+		default:
+			fmt.Printf("(:subject %s :authors %s :date_relative %s :id %s",
+				elispQuote(msg.GetHeader("Subject")),
+				elispQuote(msg.GetHeader("From")),
+				elispQuote(timeRelativeDate(timestamp)),
+				elispQuote(msg.GetMessageId()))
+			fmt.Printf(" :tags (")
+			firstTag := true
+			for tags := msg.GetTags(); tags.Valid(); tags.MoveToNext() {
+				if !firstTag {
+					fmt.Printf(" ")
+				}
+				firstTag = false
+				tag := tags.Get()
+				fmt.Printf("%s", elispQuote(tag))
 			}
-			firstTag = false
-			tag := tags.Get()
-			fmt.Printf("%s", elispQuote(tag))
+			fmt.Printf("))")
 		}
-		fmt.Printf("))")
 	}
+	signal.Stop(sigChan)
 	fmt.Printf(")\n")
 }
 
