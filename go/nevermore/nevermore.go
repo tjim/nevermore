@@ -14,6 +14,7 @@ package main
 */
 
 import (
+	"bufio"
 	"fmt"
 	"git.notmuchmail.org/git/notmuch.git/bindings/go/src/notmuch"
 	"github.com/msbranco/goconfig"
@@ -27,15 +28,39 @@ import (
 
 func main() {
 	args := os.Args[1:]
-	query := strings.Join(args, " ")
-	SearchMessages(query)
+	switch args[0] {
+	case "server":
+		Server()
+	case "search":
+		query := strings.Join(args[1:], " ")
+		SearchMessages(query)
+	default:
+		fmt.Printf("Usage: nevermore server\n")
+		fmt.Printf("       nevermore search <query>\n")
+	}
+}
+
+func Server() {
+	db, status := getNotmuchDb()
+	if status != notmuch.STATUS_SUCCESS {
+		panic("Error: unable to open notmuch database")
+	}
+	lines := bufio.NewScanner(os.Stdin)
+	for lines.Scan() {
+		line := lines.Text()
+		SearchMessages0(db, line)
+	}
 }
 
 func SearchMessages(query string) {
 	db, status := getNotmuchDb()
 	if status != notmuch.STATUS_SUCCESS {
-		panic("notmuch error")
+		panic("Error: unable to open notmuch database")
 	}
+	SearchMessages0(db, query)
+}
+
+func SearchMessages0(db *notmuch.Database, query string) {
 	dbQuery := db.CreateQuery(query)
 	fmt.Printf("(")
 	firstMsg := true

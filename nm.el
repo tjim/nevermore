@@ -398,7 +398,7 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
                   "nm-async-search" ; process name
                   nil               ; process buffer
                   nil               ; process sentinel
-                  ""                ; notmuch command
+                  "search"          ; nevermore command
                   nm-query))
            (set-process-filter nm-async-search-pending-proc (nm-result-wrangler 'nm-async-search-thread-result)))
        (setq nm-async-search-pending-proc
