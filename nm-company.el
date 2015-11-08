@@ -13,7 +13,7 @@
   (interactive (list 'interactive))
   (pcase command
     (`interactive (company-begin-backend 'nm-company))
-    (`prefix (and (eq major-mode 'message-mode)
+    (`prefix (and (eq major-mode 'notmuch-message-mode)
                   (looking-back "^\\(To\\|Cc\\|Bcc\\):.*"
                                 (line-beginning-position))
                   (setq nm-company-last-prefix (company-grab-symbol))))
