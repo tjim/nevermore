@@ -5,7 +5,7 @@
 ;; Maintainer: Trevor Jim
 ;; URL: https://github.com/tjim/nevermore
 ;; Version: 1.1.0
-;; Package-Requires: ((notmuch "0.18") (peg "0.6") (company "0") (emacs "24"))
+;; Package-Requires: ((notmuch "0.18") (peg "0.6") (company "0") (emacs "24") (cl-lib "0.5"))
 
 ;; This file is not part of GNU Emacs.
 
@@ -26,6 +26,7 @@
 (require 'notmuch-lib)
 (require 'notmuch-mua)
 (require 'nm-dateparse)
+(require 'cl-lib)
 
 ;; Customization
 
@@ -982,15 +983,15 @@ If EXPECT-SEQUENCE then assumes that the process output is a sequence of LISP ob
 (defun nm-bulk-junk ()
   "Mark *****SPAM***** as junk."
   (interactive)
-  (let ((messages (remove-if (lambda (message-id)
-                               (let* ((summary (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id))))
-                                      (subject (nm-sanitize (plist-get summary :subject))))
-                                 (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
-                             (nm-call-notmuch
-                              "search"
+  (let ((messages (cl-remove-if (lambda (message-id)
+                                  (let* ((summary (car (nm-call-notmuch "search" "--output=summary" (concat "id:" message-id))))
+                                         (subject (nm-sanitize (plist-get summary :subject))))
+                                    (not (string-match "^\\*\\*\\*\\*\\*SPAM\\*\\*\\*\\*\\*" subject))))
+                                (nm-call-notmuch
+                                 "search"
                                         ;                              "--limit=2000"
-                              "--output=messages"
-                              "subject:SPAM not tag:junk"))))
+                                 "--output=messages"
+                                 "subject:SPAM not tag:junk"))))
     (message "Marking %d messages as junk" (length messages))
     (mapc (lambda (message-id)
             (let ((q (concat "id:" message-id)))
